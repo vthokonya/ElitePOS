@@ -1,7 +1,14 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <menu-config xmlns="http://jmix.io/schema/flowui/menu">
 
-    <menu id="application" title="msg://zw.co.tayanasoft.elitepos/menu.application.title" opened="true">
+    <menu id="sales" title="msg://zw.co.tayanasoft.elitepos/menu.sales.title" opened="true">
+        <item view="PosView" title="msg://zw.co.tayanasoft.elitepos/menu.pos.title"/>
+    </menu>
+    <menu id="inventory" title="msg://zw.co.tayanasoft.elitepos/menu.inventory.title" opened="true">
+        <item view="CatalogView" title="msg://zw.co.tayanasoft.elitepos/menu.catalog.title"/>
+        <item view="PurchasingView" title="msg://zw.co.tayanasoft.elitepos/menu.purchasing.title"/>
+    </menu>
+    <menu id="administration" title="msg://zw.co.tayanasoft.elitepos/menu.administration.title">
         <item view="User.list" title="msg://zw.co.tayanasoft.elitepos.view.user/UserListView.title"/>
     </menu>
 

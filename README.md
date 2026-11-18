@@ -27,6 +27,15 @@ To start the application, use the **ElitePOS Jmix Application** run configuratio
 
 The application will be available at <http://localhost:8080>.
 
+## POS and inventory workflows
+
+- In **Stores, Products & Suppliers**, create currencies, stores (with one trading currency each), products with barcode and product-level tax rate, store-specific prices and opening stock, suppliers, supplier-product links, and manual exchange rates.
+- In **Point of Sale**, select a store and payment currency. Scan a barcode (USB scanners that type into the focused field work) to add one item; scan it again to increase its quantity. Checkout validates stock, applies product tax, uses the current configured exchange rate, records the sale, and deducts stock.
+- POS users have separate checkout accounts created under **Stores, Products & Suppliers → Checkout users**. A cashier signs in before checkout and can sell only when a supervisor has opened and assigned that cashier a shift. Cashiers select cash, card, or other tender; product and transaction cancellations require a supervisor's separate username/password and a reason.
+- Supervisors open shifts with an opening float, close selected cashier shifts with counted cash (the system records expected cash and variance), and close the trading day only after all store shifts are closed. Day close records cash and non-cash sales totals. Checkout account passwords are stored as hashes.
+- In **Purchasing & Payables**, create purchase orders for products linked to the selected supplier, in the store's trading currency; receive deliveries partially or in full; register supplier invoices; match invoice quantities and unit costs against received goods; and record partial or final payments.
+- Inventory is maintained per store. Receipts, sales, opening stock, and manual adjustments are recorded as stock movements. Exchange rates are entered as target currency units per one source currency unit and saved with effective times.
+
 The default user credentials are:
 * Login: `admin`
 * Password: `admin`

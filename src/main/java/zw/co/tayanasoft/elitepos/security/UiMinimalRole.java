@@ -17,4 +17,7 @@ public interface UiMinimalRole extends UiMinimalPolicies {
     @ViewPolicy(viewIds = "LoginView")
     @SpecificPolicy(resources = "ui.loginToUi")
     void login();
+
+    @ViewPolicy(viewIds = "PosView")
+    void checkout();
 }

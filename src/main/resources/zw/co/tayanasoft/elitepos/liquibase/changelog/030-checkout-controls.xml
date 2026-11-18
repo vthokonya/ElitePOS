@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        logicalFilePath="zw/co/tayanasoft/elitepos/liquibase/changelog/030-checkout-controls.xml">
+    <changeSet id="1" author="ElitePOS">
+        <createTable tableName="CHECKOUT_USER_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="USERNAME" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="DISPLAY_NAME" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="PASSWORD_HASH" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="CHECKOUT_ROLE" type="varchar(20)"><constraints nullable="false"/></column>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="POS_SHIFT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="STORE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_SHIFT_STORE" references="STORE_(ID)"/></column>
+            <column name="CASHIER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_SHIFT_CASHIER" references="CHECKOUT_USER_(ID)"/></column>
+            <column name="OPENED_BY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_SHIFT_OPENED_BY" references="CHECKOUT_USER_(ID)"/></column>
+            <column name="BUSINESS_DATE" type="date"><constraints nullable="false"/></column>
+            <column name="OPENED_AT" type="timestamp"><constraints nullable="false"/></column>
+            <column name="OPENING_FLOAT" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="STATUS" type="varchar(20)" defaultValue="OPEN"><constraints nullable="false"/></column>
+            <column name="CLOSED_AT" type="timestamp"/>
+            <column name="CLOSED_BY_ID" type="${uuid.type}"><constraints foreignKeyName="FK_POS_SHIFT_CLOSED_BY" references="CHECKOUT_USER_(ID)"/></column>
+            <column name="EXPECTED_CASH" type="decimal(19,4)"/>
+            <column name="COUNTED_CASH" type="decimal(19,4)"/>
+            <column name="CASH_VARIANCE" type="decimal(19,4)"/>
+        </createTable>
+        <createIndex tableName="POS_SHIFT_" indexName="IDX_POS_SHIFT__STORE_DATE_STATUS">
+            <column name="STORE_ID"/><column name="BUSINESS_DATE"/><column name="STATUS"/>
+        </createIndex>
+        <createIndex tableName="POS_SHIFT_" indexName="IDX_POS_SHIFT__CASHIER_DATE_STATUS">
+            <column name="CASHIER_ID"/><column name="BUSINESS_DATE"/><column name="STATUS"/>
+        </createIndex>
+        <createTable tableName="POS_DAY_CLOSE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="STORE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_DAY_CLOSE_STORE" references="STORE_(ID)"/></column>
+            <column name="BUSINESS_DATE" type="date"><constraints nullable="false"/></column>
+            <column name="CLOSED_BY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_DAY_CLOSE_USER" references="CHECKOUT_USER_(ID)"/></column>
+            <column name="CLOSED_AT" type="timestamp"><constraints nullable="false"/></column>
+            <column name="CASH_SALES" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="NON_CASH_SALES" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="POS_DAY_CLOSE_" columnNames="STORE_ID,BUSINESS_DATE" constraintName="IDX_POS_DAY_CLOSE__STORE_DATE"/>
+        <createTable tableName="POS_VOID_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="SHIFT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_VOID_SHIFT" references="POS_SHIFT_(ID)"/></column>
+            <column name="SALE_ID" type="${uuid.type}"><constraints foreignKeyName="FK_POS_VOID_SALE" references="SALE_(ID)"/></column>
+            <column name="STORE_PRODUCT_ID" type="${uuid.type}"><constraints foreignKeyName="FK_POS_VOID_PRODUCT" references="STORE_PRODUCT_(ID)"/></column>
+            <column name="CASHIER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_VOID_CASHIER" references="CHECKOUT_USER_(ID)"/></column>
+            <column name="SUPERVISOR_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POS_VOID_SUPERVISOR" references="CHECKOUT_USER_(ID)"/></column>
+            <column name="VOID_TYPE" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="QUANTITY" type="decimal(19,4)"/>
+            <column name="REASON" type="varchar(1000)"><constraints nullable="false"/></column>
+            <column name="VOIDED_AT" type="timestamp"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="POS_VOID_" indexName="IDX_POS_VOID__SHIFT_DATE">
+            <column name="SHIFT_ID"/><column name="VOIDED_AT"/>
+        </createIndex>
+        <addColumn tableName="SALE_">
+            <column name="SHIFT_ID" type="${uuid.type}"/>
+            <column name="CASHIER_ID" type="${uuid.type}"/>
+            <column name="PAYMENT_METHOD" type="varchar(20)" defaultValue="OTHER"/>
+            <column name="STATUS" type="varchar(20)" defaultValue="COMPLETED"/>
+            <column name="CANCELLED_BY_ID" type="${uuid.type}"/>
+            <column name="CANCELLED_AT" type="timestamp"/>
+            <column name="CANCELLATION_REASON" type="varchar(1000)"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="SALE_" baseColumnNames="SHIFT_ID"
+                                 constraintName="FK_SALE_SHIFT" referencedTableName="POS_SHIFT_"
+                                 referencedColumnNames="ID"/>
+        <addForeignKeyConstraint baseTableName="SALE_" baseColumnNames="CASHIER_ID"
+                                 constraintName="FK_SALE_CASHIER" referencedTableName="CHECKOUT_USER_"
+                                 referencedColumnNames="ID"/>
+        <addForeignKeyConstraint baseTableName="SALE_" baseColumnNames="CANCELLED_BY_ID"
+                                 constraintName="FK_SALE_CANCELLED_BY" referencedTableName="CHECKOUT_USER_"
+                                 referencedColumnNames="ID"/>
+        <createIndex tableName="SALE_" indexName="IDX_SALE__SHIFT_DATE">
+            <column name="SHIFT_ID"/><column name="SOLD_AT"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

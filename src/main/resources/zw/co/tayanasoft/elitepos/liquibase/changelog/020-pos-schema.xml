@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        logicalFilePath="zw/co/tayanasoft/elitepos/liquibase/changelog/020-pos-schema.xml">
+
+    <changeSet id="1" author="ElitePOS">
+        <createTable tableName="CURRENCY_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="CODE" type="varchar(3)"><constraints nullable="false" unique="true"/></column>
+            <column name="NAME" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="STORE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="NAME" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="TRADING_CURRENCY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_STORE_CURRENCY" references="CURRENCY_(ID)"/></column>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="EXCHANGE_RATE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="FROM_CURRENCY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_EXCHANGE_FROM" references="CURRENCY_(ID)"/></column>
+            <column name="TO_CURRENCY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_EXCHANGE_TO" references="CURRENCY_(ID)"/></column>
+            <column name="RATE" type="decimal(19,8)"><constraints nullable="false"/></column>
+            <column name="EFFECTIVE_AT" type="timestamp"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="EXCHANGE_RATE_" indexName="IDX_EXCHANGE_RATE__PAIR_DATE">
+            <column name="FROM_CURRENCY_ID"/><column name="TO_CURRENCY_ID"/><column name="EFFECTIVE_AT"/>
+        </createIndex>
+        <createTable tableName="PRODUCT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="NAME" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="BARCODE" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="SKU" type="varchar(255)"><constraints unique="true"/></column>
+            <column name="TAX_RATE" type="decimal(7,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="SUPPLIER_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="NAME" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="PHONE" type="varchar(255)"/>
+            <column name="EMAIL" type="varchar(255)"/>
+            <column name="ADDRESS" type="varchar(1000)"/>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="STORE_PRODUCT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="STORE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_STORE_PRODUCT_STORE" references="STORE_(ID)"/></column>
+            <column name="PRODUCT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_STORE_PRODUCT_PRODUCT" references="PRODUCT_(ID)"/></column>
+            <column name="SELL_PRICE" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="QUANTITY" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="REORDER_LEVEL" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="STORE_PRODUCT_" columnNames="STORE_ID,PRODUCT_ID" constraintName="IDX_STORE_PRODUCT__STORE_PRODUCT"/>
+        <createTable tableName="PURCHASE_ORDER_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="ORDER_NUMBER" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="STORE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_PO_STORE" references="STORE_(ID)"/></column>
+            <column name="SUPPLIER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_PO_SUPPLIER" references="SUPPLIER_(ID)"/></column>
+            <column name="CURRENCY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_PO_CURRENCY" references="CURRENCY_(ID)"/></column>
+            <column name="ORDER_DATE" type="date"><constraints nullable="false"/></column>
+            <column name="STATUS" type="varchar(32)" defaultValue="DRAFT"><constraints nullable="false"/></column>
+            <column name="TOTAL" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="PURCHASE_ORDER_LINE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="PURCHASE_ORDER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POL_ORDER" references="PURCHASE_ORDER_(ID)"/></column>
+            <column name="STORE_PRODUCT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_POL_STORE_PRODUCT" references="STORE_PRODUCT_(ID)"/></column>
+            <column name="ORDERED_QUANTITY" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="RECEIVED_QUANTITY" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="UNIT_COST" type="decimal(19,4)"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="GOODS_RECEIPT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="REFERENCE" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="PURCHASE_ORDER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_RECEIPT_ORDER" references="PURCHASE_ORDER_(ID)"/></column>
+            <column name="RECEIVED_DATE" type="date"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="GOODS_RECEIPT_LINE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="GOODS_RECEIPT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_RECEIPT_LINE_RECEIPT" references="GOODS_RECEIPT_(ID)"/></column>
+            <column name="PURCHASE_ORDER_LINE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_RECEIPT_LINE_ORDER_LINE" references="PURCHASE_ORDER_LINE_(ID)"/></column>
+            <column name="QUANTITY" type="decimal(19,4)"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="SUPPLIER_INVOICE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="INVOICE_NUMBER" type="varchar(255)"><constraints nullable="false"/></column>
+            <column name="STORE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_INVOICE_STORE" references="STORE_(ID)"/></column>
+            <column name="SUPPLIER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_INVOICE_SUPPLIER" references="SUPPLIER_(ID)"/></column>
+            <column name="CURRENCY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_INVOICE_CURRENCY" references="CURRENCY_(ID)"/></column>
+            <column name="INVOICE_DATE" type="date"><constraints nullable="false"/></column>
+            <column name="TOTAL" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="MATCHED_TOTAL" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="PAID_TOTAL" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="STATUS" type="varchar(32)" defaultValue="UNMATCHED"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="SUPPLIER_INVOICE_" columnNames="SUPPLIER_ID,INVOICE_NUMBER" constraintName="IDX_SUPPLIER_INVOICE__SUPPLIER_NUMBER"/>
+        <createTable tableName="SUPPLIER_INVOICE_MATCH_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="INVOICE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_MATCH_INVOICE" references="SUPPLIER_INVOICE_(ID)"/></column>
+            <column name="RECEIPT_LINE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_MATCH_RECEIPT_LINE" references="GOODS_RECEIPT_LINE_(ID)"/></column>
+            <column name="QUANTITY" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="UNIT_COST" type="decimal(19,4)"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="SUPPLIER_PAYMENT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="INVOICE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_PAYMENT_INVOICE" references="SUPPLIER_INVOICE_(ID)"/></column>
+            <column name="AMOUNT" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="PAID_AT" type="timestamp"><constraints nullable="false"/></column>
+            <column name="REFERENCE" type="varchar(255)"/>
+        </createTable>
+        <createTable tableName="SALE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="SALE_NUMBER" type="varchar(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="STORE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_SALE_STORE" references="STORE_(ID)"/></column>
+            <column name="PAYMENT_CURRENCY_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_SALE_CURRENCY" references="CURRENCY_(ID)"/></column>
+            <column name="PAYMENT_RATE" type="decimal(19,8)"><constraints nullable="false"/></column>
+            <column name="SUBTOTAL" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="TAX_TOTAL" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="TOTAL" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="AMOUNT_DUE" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="TENDERED" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="CHANGE_AMOUNT" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="SOLD_AT" type="timestamp"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="SALE_LINE_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="SALE_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_SALE_LINE_SALE" references="SALE_(ID)"/></column>
+            <column name="STORE_PRODUCT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_SALE_LINE_STORE_PRODUCT" references="STORE_PRODUCT_(ID)"/></column>
+            <column name="QUANTITY" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="UNIT_PRICE" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="TAX_RATE" type="decimal(7,4)"><constraints nullable="false"/></column>
+            <column name="LINE_SUBTOTAL" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="TAX_AMOUNT" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="LINE_TOTAL" type="decimal(19,4)"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="STOCK_MOVEMENT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="STORE_PRODUCT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_STOCK_MOVEMENT_STORE_PRODUCT" references="STORE_PRODUCT_(ID)"/></column>
+            <column name="QUANTITY_CHANGE" type="decimal(19,4)"><constraints nullable="false"/></column>
+            <column name="MOVEMENT_TYPE" type="varchar(32)"><constraints nullable="false"/></column>
+            <column name="REFERENCE" type="varchar(255)"/>
+            <column name="MOVED_AT" type="timestamp"><constraints nullable="false"/></column>
+        </createTable>
+        <createIndex tableName="STOCK_MOVEMENT_" indexName="IDX_STOCK_MOVEMENT__STORE_PRODUCT_DATE">
+            <column name="STORE_PRODUCT_ID"/><column name="MOVED_AT"/>
+        </createIndex>
+    </changeSet>
+    <changeSet id="2" author="ElitePOS">
+        <createTable tableName="SUPPLIER_PRODUCT_">
+            <column name="ID" type="${uuid.type}"><constraints primaryKey="true" nullable="false"/></column>
+            <column name="VERSION" type="int"><constraints nullable="false"/></column>
+            <column name="SUPPLIER_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_SUPPLIER_PRODUCT_SUPPLIER" references="SUPPLIER_(ID)"/></column>
+            <column name="PRODUCT_ID" type="${uuid.type}"><constraints nullable="false" foreignKeyName="FK_SUPPLIER_PRODUCT_PRODUCT" references="PRODUCT_(ID)"/></column>
+            <column name="SUPPLIER_SKU" type="varchar(255)"/>
+            <column name="LAST_UNIT_COST" type="decimal(19,4)" defaultValueNumeric="0"><constraints nullable="false"/></column>
+            <column name="ACTIVE" type="boolean" defaultValueBoolean="true"><constraints nullable="false"/></column>
+        </createTable>
+        <addUniqueConstraint tableName="SUPPLIER_PRODUCT_" columnNames="SUPPLIER_ID,PRODUCT_ID" constraintName="IDX_SUPPLIER_PRODUCT__SUPPLIER_PRODUCT"/>
+        <addColumn tableName="PURCHASE_ORDER_LINE_">
+            <column name="SUPPLIER_PRODUCT_ID" type="${uuid.type}"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="PURCHASE_ORDER_LINE_" baseColumnNames="SUPPLIER_PRODUCT_ID"
+                                 constraintName="FK_POL_SUPPLIER_PRODUCT" referencedTableName="SUPPLIER_PRODUCT_"
+                                 referencedColumnNames="ID"/>
+    </changeSet>
+</databaseChangeLog>
