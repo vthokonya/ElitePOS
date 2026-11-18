@@ -80,7 +80,7 @@ public class PosView extends StandardView {
         currentStore = null;
         cart.clear();
         TextField username = new TextField("Checkout username");
-        PasswordField password = new PasswordField("Password");
+        PasswordField password = checkoutPinField("PIN (4 digits)");
         Button login = new Button("Sign in", event -> {
             try {
                 signedInUser = posService.authenticateCheckoutUser(username.getValue(), password.getValue());
@@ -369,7 +369,7 @@ public class PosView extends StandardView {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle(title);
         TextField supervisorUsername = new TextField("Supervisor username");
-        PasswordField supervisorPassword = new PasswordField("Supervisor password");
+        PasswordField supervisorPassword = checkoutPinField("Supervisor PIN");
         TextField reason = new TextField("Reason");
         reason.setWidthFull();
         Button authorize = new Button("Authorize", event -> {
@@ -390,7 +390,7 @@ public class PosView extends StandardView {
     private void requestPassword(String title, Consumer<String> action) {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle(title);
-        PasswordField password = new PasswordField("Confirm supervisor password");
+        PasswordField password = checkoutPinField("Confirm supervisor PIN");
         Button authorize = new Button("Confirm", event -> {
             String value = password.getValue();
             dialog.close();
@@ -400,6 +400,15 @@ public class PosView extends StandardView {
         dialog.getFooter().add(new Button("Cancel", event -> dialog.close()), authorize);
         dialog.open();
         password.focus();
+    }
+
+    private PasswordField checkoutPinField(String label) {
+        PasswordField field = new PasswordField(label);
+        field.setMaxLength(4);
+        field.setPattern("[0-9]{4}");
+        field.setAllowedCharPattern("[0-9]");
+        field.getElement().setAttribute("inputmode", "numeric");
+        return field;
     }
 
     private void refreshSupervisorShifts(Store store) {

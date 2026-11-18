@@ -229,8 +229,8 @@ public class PosService {
     @Transactional
     public CheckoutUser createCheckoutUser(String username, String displayName, String password, String role) {
         if (username == null || username.isBlank() || displayName == null || displayName.isBlank()
-                || password == null || password.length() < 8) {
-            throw new IllegalArgumentException("Enter a username, display name, and a password of at least 8 characters.");
+                || !isCheckoutPin(password)) {
+            throw new IllegalArgumentException("Enter a username, display name, and a four-digit numeric PIN.");
         }
         if (role == null || !List.of("CASHIER", "SUPERVISOR").contains(role)) {
             throw new IllegalArgumentException("Checkout role must be Cashier or Supervisor.");
@@ -253,8 +253,8 @@ public class PosService {
 
     @Transactional
     public CheckoutUser resetCheckoutPassword(UUID userId, String password) {
-        if (password == null || password.length() < 8) {
-            throw new IllegalArgumentException("Checkout passwords must be at least 8 characters.");
+        if (!isCheckoutPin(password)) {
+            throw new IllegalArgumentException("Checkout PINs must contain exactly four digits.");
         }
         CheckoutUser user = require(CheckoutUser.class, userId, "Checkout user");
         user.setPasswordHash(passwordEncoder.encode(password));
@@ -263,8 +263,8 @@ public class PosService {
 
     @Transactional(readOnly = true)
     public CheckoutUser authenticateCheckoutUser(String username, String password) {
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalArgumentException("Enter your checkout username and password.");
+        if (username == null || username.isBlank() || !isCheckoutPin(password)) {
+            throw new IllegalArgumentException("Enter your checkout username and four-digit PIN.");
         }
         CheckoutUser user = dataManager.load(CheckoutUser.class)
                 .query("select u from CheckoutUser u where u.username = :username and u.active = true")
@@ -275,6 +275,10 @@ public class PosService {
             throw new IllegalArgumentException("Checkout login failed.");
         }
         return user;
+    }
+
+    private static boolean isCheckoutPin(String pin) {
+        return pin != null && pin.matches("[0-9]{4}");
     }
 
     @Transactional(readOnly = true)

@@ -39,18 +39,22 @@ class PosWorkflowTest {
         Store store = posService.createStore("Test Store", usd.getId());
         Supplier supplier = posService.createSupplier("Test Supplier", null, null, null);
         CheckoutUser supervisor = posService.createCheckoutUser("supervisor-test", "Test Supervisor",
-                "supervisor-password", "SUPERVISOR");
+                "0123", "SUPERVISOR");
         CheckoutUser cashier = posService.createCheckoutUser("cashier-test", "Test Cashier",
-                "cashier-password", "CASHIER");
-        assertThat(passwordEncoder.matches("cashier-password", cashier.getPasswordHash())).isTrue();
-        assertThat(posService.authenticateCheckoutUser("cashier-test", "cashier-password").getId())
+                "4567", "CASHIER");
+        assertThat(passwordEncoder.matches("4567", cashier.getPasswordHash())).isTrue();
+        assertThat(posService.authenticateCheckoutUser("cashier-test", "4567").getId())
                 .isEqualTo(cashier.getId());
         assertThatIllegalArgumentException().isThrownBy(() ->
-                posService.authenticateCheckoutUser("cashier-test", "wrong-password"));
+                posService.authenticateCheckoutUser("cashier-test", "wrong"));
         assertThatIllegalArgumentException().isThrownBy(() ->
-                posService.openShift(cashier.getId(), "cashier-password", store.getId(),
+                posService.createCheckoutUser("invalid-pin", "Invalid PIN", "12a4", "CASHIER"));
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                posService.resetCheckoutPassword(cashier.getId(), "12345"));
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                posService.openShift(cashier.getId(), "4567", store.getId(),
                         cashier.getId(), BigDecimal.ZERO));
-        PosShift shift = posService.openShift(supervisor.getId(), "supervisor-password", store.getId(),
+        PosShift shift = posService.openShift(supervisor.getId(), "0123", store.getId(),
                 cashier.getId(), new BigDecimal("20"));
         Product product = posService.createProduct("Coffee", "barcode-test-coffee", "COFFEE-01",
                 new BigDecimal("15"), store.getId(), new BigDecimal("10"), new BigDecimal("5"), BigDecimal.ZERO);
@@ -72,9 +76,9 @@ class PosWorkflowTest {
         assertThat(sale.getChangeAmount()).isEqualByComparingTo("0.0000");
         assertThatIllegalArgumentException().isThrownBy(() ->
                 posService.authorizeProductCancellation(cashier.getId(), shift.getId(), storeProduct.getId(),
-                        BigDecimal.ONE, "Unauthorized attempt", "cashier-test", "cashier-password"));
+                        BigDecimal.ONE, "Unauthorized attempt", "cashier-test", "4567"));
         posService.authorizeProductCancellation(cashier.getId(), shift.getId(), storeProduct.getId(),
-                BigDecimal.ONE, "Customer changed mind", "supervisor-test", "supervisor-password");
+                BigDecimal.ONE, "Customer changed mind", "supervisor-test", "0123");
         assertThat(dataManager.loadValue("select count(v) from PosVoid v where v.voidType = 'PRODUCT'", Long.class).one())
                 .isEqualTo(1);
 
@@ -113,20 +117,23 @@ class PosWorkflowTest {
                 "CASH", shift.getId(), cashier.getId(),
                 List.of(new PosService.CheckoutLine(storeProduct.getId(), BigDecimal.ONE)));
         posService.cancelTransaction(cashier.getId(), cancelledSale.getId(), "Duplicate transaction",
-                "supervisor-test", "supervisor-password");
+                "supervisor-test", "0123");
         assertThat(dataManager.load(Sale.class).id(cancelledSale.getId()).one().getStatus()).isEqualTo("CANCELLED");
         assertThat(dataManager.load(StoreProduct.class).id(storeProduct.getId()).one().getQuantity()).isEqualByComparingTo("7");
         assertThatIllegalArgumentException().isThrownBy(() ->
-                posService.closeDay(supervisor.getId(), "supervisor-password", store.getId()));
+                posService.closeDay(supervisor.getId(), "0123", store.getId()));
 
-        PosShift closedShift = posService.closeShift(supervisor.getId(), "supervisor-password",
+        PosShift closedShift = posService.closeShift(supervisor.getId(), "0123",
                 shift.getId(), new BigDecimal("43"));
         assertThat(closedShift.getExpectedCash()).isEqualByComparingTo("43");
         assertThat(closedShift.getCashVariance()).isEqualByComparingTo("0");
-        PosDayClose dayClose = posService.closeDay(supervisor.getId(), "supervisor-password", store.getId());
+        PosDayClose dayClose = posService.closeDay(supervisor.getId(), "0123", store.getId());
         assertThat(dayClose.getCashSales()).isEqualByComparingTo("23");
         assertThatIllegalArgumentException().isThrownBy(() ->
-                posService.openShift(supervisor.getId(), "supervisor-password", store.getId(),
+                posService.openShift(supervisor.getId(), "0123", store.getId(),
                         cashier.getId(), BigDecimal.ZERO));
+        posService.resetCheckoutPassword(cashier.getId(), "0000");
+        assertThat(posService.authenticateCheckoutUser("cashier-test", "0000").getId())
+                .isEqualTo(cashier.getId());
     }
 }

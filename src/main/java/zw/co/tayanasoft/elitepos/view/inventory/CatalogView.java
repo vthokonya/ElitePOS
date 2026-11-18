@@ -346,7 +346,7 @@ public class CatalogView extends StandardView {
         VerticalLayout page = page();
         checkoutUsername = new TextField("Username");
         checkoutDisplayName = new TextField("Display name");
-        checkoutPassword = new PasswordField("Password (8+ characters)");
+        checkoutPassword = checkoutPinField("PIN (4 digits)");
         checkoutRole = new ComboBox<>("Checkout role");
         checkoutRole.setItems("CASHIER", "SUPERVISOR");
         checkoutRole.setItemLabelGenerator(role -> "CASHIER".equals(role) ? "Cashier" : "Supervisor");
@@ -367,7 +367,7 @@ public class CatalogView extends StandardView {
         checkoutUserGrid.addColumn(user -> Boolean.TRUE.equals(user.getActive()) ? "Active" : "Inactive").setHeader("Status");
         checkoutUserGrid.setHeight("16em");
         checkoutUserGrid.asSingleSelect().addValueChangeListener(event -> selectedCheckoutUser = event.getValue());
-        PasswordField resetPassword = new PasswordField("New password (8+ characters)");
+        PasswordField resetPassword = checkoutPinField("New PIN (4 digits)");
         Button resetUserPassword = new Button("Reset selected password", event -> run(() -> {
             if (selectedCheckoutUser == null) throw new IllegalArgumentException("Select a checkout user.");
             posService.resetCheckoutPassword(selectedCheckoutUser.getId(), resetPassword.getValue());
@@ -384,6 +384,15 @@ public class CatalogView extends StandardView {
                 row(checkoutUsername, checkoutDisplayName, checkoutPassword, checkoutRole, createUser),
                 checkoutUserGrid, row(resetPassword, resetUserPassword, toggleUser));
         return page;
+    }
+
+    private PasswordField checkoutPinField(String label) {
+        PasswordField field = new PasswordField(label);
+        field.setMaxLength(4);
+        field.setPattern("[0-9]{4}");
+        field.setAllowedCharPattern("[0-9]");
+        field.getElement().setAttribute("inputmode", "numeric");
+        return field;
     }
 
     private void refreshData() {
