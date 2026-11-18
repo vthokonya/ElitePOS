@@ -28,7 +28,6 @@ import zw.co.tayanasoft.elitepos.entity.Currency;
 import zw.co.tayanasoft.elitepos.entity.PosShift;
 import zw.co.tayanasoft.elitepos.entity.Sale;
 import zw.co.tayanasoft.elitepos.entity.Store;
-import zw.co.tayanasoft.elitepos.view.main.MainView;
 import zw.co.tayanasoft.elitepos.service.PosService;
 
 import java.math.BigDecimal;
@@ -41,7 +40,7 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-@Route(value = "pos", layout = MainView.class)
+@Route(value = "pos")
 @ViewController(id = "PosView")
 @ViewDescriptor(path = "pos-view.xml")
 public class PosView extends StandardView {
