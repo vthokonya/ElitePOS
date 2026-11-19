@@ -30,12 +30,14 @@ import zw.co.tayanasoft.elitepos.entity.Store;
 import zw.co.tayanasoft.elitepos.entity.StoreProduct;
 import zw.co.tayanasoft.elitepos.entity.Supplier;
 import zw.co.tayanasoft.elitepos.entity.SupplierProduct;
+import zw.co.tayanasoft.elitepos.entity.TaxRate;
 import zw.co.tayanasoft.elitepos.service.PosService;
 import zw.co.tayanasoft.elitepos.view.main.MainView;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Route(value = "inventory", layout = MainView.class)
 @ViewController(id = "CatalogView")
@@ -58,14 +60,15 @@ public class CatalogView extends StandardView {
     private TextField productName;
     private TextField productBarcode;
     private TextField productSku;
-    private BigDecimalField productTax;
     private BigDecimalField productStandardCost;
     private BigDecimalField productStandardSellPrice;
+    private ComboBox<TaxRate> productTaxRate;
+    private List<TaxRate> taxRateItems = List.of();
     private Grid<Product> productGrid;
     private TextField editProductName;
     private TextField editProductBarcode;
     private TextField editProductSku;
-    private BigDecimalField editProductTax;
+    private ComboBox<TaxRate> editProductTaxRate;
     private BigDecimalField editProductStandardCost;
     private BigDecimalField editProductStandardSellPrice;
     private Product selectedProduct;
@@ -88,6 +91,9 @@ public class CatalogView extends StandardView {
     private Grid<Store> storeGrid;
     private Grid<Currency> currencyGrid;
     private Grid<ExchangeRate> rateGrid;
+    private Grid<TaxRate> taxRateGrid;
+    private BigDecimalField editTaxPercentage;
+    private TaxRate selectedTaxRate;
     private TextField checkoutUsername;
     private TextField checkoutDisplayName;
     private PasswordField checkoutPassword;
@@ -110,12 +116,13 @@ public class CatalogView extends StandardView {
         Tab productTab = new Tab("Products & stock");
         Tab supplierTab = new Tab("Suppliers");
         Tab ratesTab = new Tab("Exchange rates");
+        Tab taxRatesTab = new Tab("Tax rates");
         Tab checkoutUsersTab = new Tab("Checkout users");
-        Tabs tabs = new Tabs(setupTab, productTab, supplierTab, ratesTab, checkoutUsersTab);
+        Tabs tabs = new Tabs(setupTab, productTab, supplierTab, ratesTab, taxRatesTab, checkoutUsersTab);
         Div pages = new Div();
         pages.setWidthFull();
         List<Component> pageContents = List.of(buildSetupPage(), buildProductPage(), buildSupplierPage(),
-                buildRatesPage(), buildCheckoutUsersPage());
+                buildRatesPage(), buildTaxRatesPage(), buildCheckoutUsersPage());
         pages.add(pageContents.get(0));
         tabs.addSelectedChangeListener(event -> {
             pages.removeAll();
@@ -176,19 +183,20 @@ public class CatalogView extends StandardView {
         productName = new TextField("Product name");
         productBarcode = new TextField("Barcode");
         productSku = new TextField("SKU");
-        productTax = numberField("Tax rate (%)", BigDecimal.ZERO);
+        productTaxRate = new ComboBox<>("Tax category");
+        productTaxRate.setItemLabelGenerator(this::taxRateLabel);
         productStandardCost = numberField("Standard cost (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
         productStandardSellPrice = numberField("Standard selling price (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
         Button createProduct = new Button("Create product", event -> run(() -> {
             posService.createProduct(productName.getValue(), productBarcode.getValue(), productSku.getValue(),
-                    value(productTax), value(productStandardCost), value(productStandardSellPrice));
+                    id(productTaxRate.getValue()), value(productStandardCost), value(productStandardSellPrice));
             productName.clear();
             productBarcode.clear();
             productSku.clear();
             refreshData();
         }));
         page.add(new com.vaadin.flow.component.html.H3("Add global product"),
-                row(productName, productBarcode, productSku, productTax),
+                row(productName, productBarcode, productSku, productTaxRate),
                 row(productStandardCost, productStandardSellPrice, createProduct));
 
         productGrid = new Grid<>();
@@ -199,12 +207,13 @@ public class CatalogView extends StandardView {
                 .setHeader("Standard cost (" + priceCurrencyLabel + ")");
         productGrid.addColumn(product -> product.getStandardSellPrice().stripTrailingZeros().toPlainString())
                 .setHeader("Standard sell price (" + priceCurrencyLabel + ")");
-        productGrid.addColumn(product -> product.getTaxRate().stripTrailingZeros().toPlainString() + "%").setHeader("Tax");
+        productGrid.addColumn(product -> taxRateLabel(product.getTaxRate())).setHeader("Tax");
         productGrid.setHeight("13em");
         editProductName = new TextField("Name");
         editProductBarcode = new TextField("Barcode");
         editProductSku = new TextField("SKU");
-        editProductTax = numberField("Tax rate (%)", BigDecimal.ZERO);
+        editProductTaxRate = new ComboBox<>("Tax category");
+        editProductTaxRate.setItemLabelGenerator(this::taxRateLabel);
         editProductStandardCost = numberField("Standard cost (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
         editProductStandardSellPrice = numberField("Standard selling price (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
         Button saveProduct = new Button("Save product changes", event -> run(() -> {
@@ -212,7 +221,7 @@ public class CatalogView extends StandardView {
                 throw new IllegalArgumentException("Select a product to edit.");
             }
             posService.updateProduct(selectedProduct.getId(), editProductName.getValue(), editProductBarcode.getValue(),
-                    editProductSku.getValue(), value(editProductTax), value(editProductStandardCost),
+                    editProductSku.getValue(), id(editProductTaxRate.getValue()), value(editProductStandardCost),
                     value(editProductStandardSellPrice));
             refreshData();
         }));
@@ -222,13 +231,15 @@ public class CatalogView extends StandardView {
                 editProductName.setValue(selectedProduct.getName());
                 editProductBarcode.setValue(selectedProduct.getBarcode());
                 editProductSku.setValue(selectedProduct.getSku() == null ? "" : selectedProduct.getSku());
-                editProductTax.setValue(selectedProduct.getTaxRate());
+                editProductTaxRate.setValue(taxRateItems.stream()
+                        .filter(taxRate -> Objects.equals(taxRate.getId(), selectedProduct.getTaxRate().getId()))
+                        .findFirst().orElse(null));
                 editProductStandardCost.setValue(selectedProduct.getStandardCost());
                 editProductStandardSellPrice.setValue(selectedProduct.getStandardSellPrice());
             }
         });
         page.add(new com.vaadin.flow.component.html.H3("Edit product"), productGrid,
-                row(editProductName, editProductBarcode, editProductSku, editProductTax),
+                row(editProductName, editProductBarcode, editProductSku, editProductTaxRate),
                 row(editProductStandardCost, editProductStandardSellPrice, saveProduct));
 
         existingProduct = new ComboBox<>("Product");
@@ -373,6 +384,35 @@ public class CatalogView extends StandardView {
         return page;
     }
 
+    private Component buildTaxRatesPage() {
+        VerticalLayout page = page();
+        taxRateGrid = new Grid<>();
+        taxRateGrid.addColumn(TaxRate::getCode).setHeader("Code");
+        taxRateGrid.addColumn(TaxRate::getName).setHeader("Tax category");
+        taxRateGrid.addColumn(rate -> rate.getPercentage().stripTrailingZeros().toPlainString() + "%")
+                .setHeader("Percentage");
+        taxRateGrid.setHeight("14em");
+        editTaxPercentage = numberField("Percentage (%)", BigDecimal.ZERO);
+        taxRateGrid.asSingleSelect().addValueChangeListener(event -> {
+            selectedTaxRate = event.getValue();
+            if (selectedTaxRate != null) {
+                editTaxPercentage.setValue(selectedTaxRate.getPercentage());
+            }
+        });
+        Button saveTaxRate = new Button("Save tax percentage", event -> run(() -> {
+            if (selectedTaxRate == null) {
+                throw new IllegalArgumentException("Select a tax category to edit.");
+            }
+            posService.updateTaxRate(selectedTaxRate.getId(), value(editTaxPercentage));
+            refreshData();
+        }));
+        page.add(new com.vaadin.flow.component.html.H3("Tax categories"),
+                new Div(new com.vaadin.flow.component.html.Span(
+                        "Changing a percentage affects future sales; completed sale lines retain their recorded rate.")),
+                taxRateGrid, row(editTaxPercentage, saveTaxRate));
+        return page;
+    }
+
     private Component buildCheckoutUsersPage() {
         VerticalLayout page = page();
         checkoutUsername = new TextField("Username");
@@ -430,6 +470,7 @@ public class CatalogView extends StandardView {
         List<Currency> currencies = dataManager.load(Currency.class).all().list();
         List<Store> stores = dataManager.load(Store.class).all().list();
         List<Product> products = dataManager.load(Product.class).all().list();
+        taxRateItems = posService.getTaxRates();
         List<StoreProduct> stock = dataManager.load(StoreProduct.class).all().list();
         List<Supplier> suppliers = dataManager.load(Supplier.class).all().list();
         List<SupplierProduct> suppliedProducts = dataManager.load(SupplierProduct.class).all().list();
@@ -442,6 +483,8 @@ public class CatalogView extends StandardView {
         }
         if (addStore != null) addStore.setItems(stores);
         if (existingProduct != null) existingProduct.setItems(products);
+        if (productTaxRate != null) productTaxRate.setItems(taxRateItems);
+        if (editProductTaxRate != null) editProductTaxRate.setItems(taxRateItems);
         if (rateFrom != null) rateFrom.setItems(currencies);
         if (rateTo != null) rateTo.setItems(currencies);
         if (currencyGrid != null) currencyGrid.setItems(currencies);
@@ -456,6 +499,7 @@ public class CatalogView extends StandardView {
         if (checkoutUserGrid != null) checkoutUserGrid.setItems(checkoutUsers);
         if (rateGrid != null) rateGrid.setItems(dataManager.load(ExchangeRate.class)
                 .query("select r from ExchangeRate r order by r.effectiveAt desc").list());
+        if (taxRateGrid != null) taxRateGrid.setItems(taxRateItems);
     }
 
     private void run(Runnable operation) {
@@ -482,7 +526,13 @@ public class CatalogView extends StandardView {
         if (entity instanceof Currency currency) return currency.getId();
         if (entity instanceof Product product) return product.getId();
         if (entity instanceof Supplier supplier) return supplier.getId();
+        if (entity instanceof TaxRate taxRate) return taxRate.getId();
         throw new IllegalArgumentException("Select a valid item.");
+    }
+
+    private String taxRateLabel(TaxRate taxRate) {
+        return taxRate == null ? "" : taxRate.getName() + " ("
+                + taxRate.getPercentage().stripTrailingZeros().toPlainString() + "%)";
     }
 
     private static VerticalLayout page() {

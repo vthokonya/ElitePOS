@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        logicalFilePath="zw/co/tayanasoft/elitepos/liquibase/changelog/050-tax-rates.xml">
+
+    <changeSet id="1" author="ElitePOS">
+        <createTable tableName="TAX_RATE_">
+            <column name="ID" type="${uuid.type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="VERSION" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="CODE" type="varchar(32)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="NAME" type="varchar(255)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="PERCENTAGE" type="decimal(7,4)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <insert tableName="TAX_RATE_">
+            <column name="ID" value="00000000-0000-0000-0000-000000000001"/>
+            <column name="VERSION" valueNumeric="1"/>
+            <column name="CODE" value="VATABLE"/>
+            <column name="NAME" value="Vatable"/>
+            <column name="PERCENTAGE" valueNumeric="15.5"/>
+        </insert>
+        <insert tableName="TAX_RATE_">
+            <column name="ID" value="00000000-0000-0000-0000-000000000002"/>
+            <column name="VERSION" valueNumeric="1"/>
+            <column name="CODE" value="NON_VATABLE"/>
+            <column name="NAME" value="Non-vatable"/>
+            <column name="PERCENTAGE" valueNumeric="0"/>
+        </insert>
+        <insert tableName="TAX_RATE_">
+            <column name="ID" value="00000000-0000-0000-0000-000000000003"/>
+            <column name="VERSION" valueNumeric="1"/>
+            <column name="CODE" value="EXEMPT"/>
+            <column name="NAME" value="Exempt"/>
+            <column name="PERCENTAGE" valueNumeric="0"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="2" author="ElitePOS">
+        <addColumn tableName="PRODUCT_">
+            <column name="TAX_RATE_ID" type="${uuid.type}"/>
+        </addColumn>
+        <addForeignKeyConstraint baseTableName="PRODUCT_" baseColumnNames="TAX_RATE_ID"
+                                 constraintName="FK_PRODUCT_TAX_RATE" referencedTableName="TAX_RATE_"
+                                 referencedColumnNames="ID"/>
+        <sql dbms="postgresql">
+            INSERT INTO TAX_RATE_ (ID, VERSION, CODE, NAME, PERCENTAGE)
+            SELECT gen_random_uuid(), 1,
+                   'LEGACY_' || REPLACE(CAST(r.TAX_RATE AS VARCHAR), '.', '_'),
+                   'Legacy ' || CAST(r.TAX_RATE AS VARCHAR) || '%', r.TAX_RATE
+            FROM (SELECT DISTINCT TAX_RATE FROM PRODUCT_ WHERE TAX_RATE NOT IN (0, 15.5)) r
+        </sql>
+        <sql dbms="hsqldb">
+            INSERT INTO TAX_RATE_ (ID, VERSION, CODE, NAME, PERCENTAGE)
+            SELECT UUID(), 1,
+                   'LEGACY_' || REPLACE(CAST(r.TAX_RATE AS VARCHAR(16)), '.', '_'),
+                   'Legacy ' || CAST(r.TAX_RATE AS VARCHAR(16)) || '%', r.TAX_RATE
+            FROM (SELECT DISTINCT TAX_RATE FROM PRODUCT_ WHERE TAX_RATE NOT IN (0, 15.5)) r
+        </sql>
+        <update tableName="PRODUCT_">
+            <column name="TAX_RATE_ID" value="00000000-0000-0000-0000-000000000001"/>
+            <where>TAX_RATE = 15.5</where>
+        </update>
+        <update tableName="PRODUCT_">
+            <column name="TAX_RATE_ID" value="00000000-0000-0000-0000-000000000002"/>
+            <where>TAX_RATE = 0</where>
+        </update>
+        <sql>
+            UPDATE PRODUCT_
+            SET TAX_RATE_ID = (
+                SELECT ID FROM TAX_RATE_
+                WHERE PERCENTAGE = PRODUCT_.TAX_RATE AND CODE LIKE 'LEGACY_%'
+            )
+            WHERE TAX_RATE NOT IN (0, 15.5)
+        </sql>
+        <addNotNullConstraint tableName="PRODUCT_" columnName="TAX_RATE_ID" columnDataType="${uuid.type}"/>
+        <dropColumn tableName="PRODUCT_" columnName="TAX_RATE"/>
+        <addColumn tableName="SALE_LINE_">
+            <column name="TAX_RATE_CODE" type="varchar(32)"/>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

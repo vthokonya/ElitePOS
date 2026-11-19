@@ -55,6 +55,24 @@ public class PosService {
                 .orElse(null);
     }
 
+    @Transactional(readOnly = true)
+    public List<TaxRate> getTaxRates() {
+        return dataManager.load(TaxRate.class)
+                .query("select t from TaxRate t order by t.code")
+                .list();
+    }
+
+    @Transactional
+    public TaxRate updateTaxRate(UUID taxRateId, BigDecimal percentage) {
+        if (percentage == null || percentage.signum() < 0
+                || percentage.compareTo(new BigDecimal("100")) > 0) {
+            throw new IllegalArgumentException("Tax rate must be between 0 and 100 percent.");
+        }
+        TaxRate taxRate = require(TaxRate.class, taxRateId, "Tax rate");
+        taxRate.setPercentage(percentage.setScale(4, RoundingMode.HALF_UP));
+        return dataManager.save(taxRate);
+    }
+
     @Transactional
     public Currency setDefaultCurrency(UUID currencyId) {
         Currency currency = require(Currency.class, currencyId, "Default currency");
@@ -114,7 +132,7 @@ public class PosService {
                 .optional()
                 .orElseThrow(() -> new IllegalArgumentException("No active product with barcode " + barcode + " is stocked at this store."));
         return new ProductLookup(item.getId(), item.getProduct().getBarcode(), item.getProduct().getName(),
-                getStoreSellPrice(item), item.getProduct().getTaxRate(), item.getQuantity());
+                getStoreSellPrice(item), item.getProduct().getTaxRate().getPercentage(), item.getQuantity());
     }
 
     @Transactional(readOnly = true)
@@ -200,7 +218,8 @@ public class PosService {
             }
             BigDecimal unitPrice = getStoreSellPrice(item);
             BigDecimal lineSubtotal = money(unitPrice.multiply(quantity));
-            BigDecimal taxRate = item.getProduct().getTaxRate();
+            TaxRate taxClass = item.getProduct().getTaxRate();
+            BigDecimal taxRate = taxClass.getPercentage();
             if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
                 throw new IllegalArgumentException("Tax rate for " + item.getProduct().getName() + " must be between 0 and 100 percent.");
             }
@@ -210,6 +229,7 @@ public class PosService {
             saleLine.setQuantity(quantity);
             saleLine.setUnitPrice(unitPrice);
             saleLine.setTaxRate(taxRate);
+            saleLine.setTaxRateCode(taxClass.getCode());
             saleLine.setLineSubtotal(lineSubtotal);
             saleLine.setTaxAmount(taxAmount);
             saleLine.setLineTotal(lineSubtotal.add(taxAmount));
@@ -638,13 +658,10 @@ public class PosService {
     }
 
     @Transactional
-    public Product createProduct(String name, String barcode, String sku, BigDecimal taxRate,
+    public Product createProduct(String name, String barcode, String sku, UUID taxRateId,
                                  BigDecimal standardCost, BigDecimal standardSellPrice) {
         if (name == null || name.isBlank() || barcode == null || barcode.isBlank()) {
             throw new IllegalArgumentException("Product name and barcode are required.");
-        }
-        if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
-            throw new IllegalArgumentException("Tax rate must be between 0 and 100 percent.");
         }
         requireDefaultCurrency();
         requireNonNegative(standardCost, "Standard cost");
@@ -653,7 +670,7 @@ public class PosService {
         product.setName(name.trim());
         product.setBarcode(barcode.trim());
         product.setSku(sku == null || sku.isBlank() ? null : sku.trim());
-        product.setTaxRate(taxRate);
+        product.setTaxRate(require(TaxRate.class, taxRateId, "Tax rate"));
         product.setStandardCost(money(standardCost));
         product.setStandardSellPrice(money(standardSellPrice));
         product.setActive(true);
@@ -686,13 +703,10 @@ public class PosService {
     }
 
     @Transactional
-    public Product updateProduct(UUID productId, String name, String barcode, String sku, BigDecimal taxRate,
+    public Product updateProduct(UUID productId, String name, String barcode, String sku, UUID taxRateId,
                                  BigDecimal standardCost, BigDecimal standardSellPrice) {
         if (name == null || name.isBlank() || barcode == null || barcode.isBlank()) {
             throw new IllegalArgumentException("Product name and barcode are required.");
-        }
-        if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
-            throw new IllegalArgumentException("Tax rate must be between 0 and 100 percent.");
         }
         requireDefaultCurrency();
         requireNonNegative(standardCost, "Standard cost");
@@ -701,7 +715,7 @@ public class PosService {
         product.setName(name.trim());
         product.setBarcode(barcode.trim());
         product.setSku(sku == null || sku.isBlank() ? null : sku.trim());
-        product.setTaxRate(taxRate);
+        product.setTaxRate(require(TaxRate.class, taxRateId, "Tax rate"));
         product.setStandardCost(money(standardCost));
         product.setStandardSellPrice(money(standardSellPrice));
         return dataManager.save(product);

@@ -38,6 +38,8 @@ public class SaleLine {
     @NotNull
     @Column(name = "TAX_RATE", nullable = false, precision = 7, scale = 4)
     private BigDecimal taxRate;
+    @Column(name = "TAX_RATE_CODE", length = 32)
+    private String taxRateCode;
     @NotNull
     @Column(name = "LINE_SUBTOTAL", nullable = false, precision = 19, scale = 4)
     private BigDecimal lineSubtotal;
@@ -62,6 +64,8 @@ public class SaleLine {
     public void setUnitPrice(BigDecimal unitPrice) { this.unitPrice = unitPrice; }
     public BigDecimal getTaxRate() { return taxRate; }
     public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
+    public String getTaxRateCode() { return taxRateCode; }
+    public void setTaxRateCode(String taxRateCode) { this.taxRateCode = taxRateCode; }
     public BigDecimal getLineSubtotal() { return lineSubtotal; }
     public void setLineSubtotal(BigDecimal lineSubtotal) { this.lineSubtotal = lineSubtotal; }
     public BigDecimal getTaxAmount() { return taxAmount; }

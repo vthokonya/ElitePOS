@@ -47,7 +47,7 @@ class PosWorkflowTest {
         CheckoutUser cashier = posService.createCheckoutUser(
                 "pos-access-cashier", "POS Access Cashier", "4567", "CASHIER");
         Product product = posService.createProduct("POS Access Product", "pos-access-barcode", "POS-ACCESS",
-                BigDecimal.ZERO, new BigDecimal("3"), new BigDecimal("5"));
+                taxRateId("NON_VATABLE"), new BigDecimal("3"), new BigDecimal("5"));
         assertThat(dataManager.load(StoreProduct.class)
                 .query("select sp from StoreProduct sp where sp.product.id = :productId")
                 .parameter("productId", product.getId())
@@ -115,7 +115,7 @@ class PosWorkflowTest {
         PosShift shift = posService.openShift(supervisor.getId(), "0123", store.getId(),
                 cashier.getId(), new BigDecimal("20"));
         Product product = posService.createProduct("Coffee", "barcode-test-coffee", "COFFEE-01",
-                new BigDecimal("15"), new BigDecimal("5"), new BigDecimal("12"));
+                taxRateId("VATABLE"), new BigDecimal("5"), new BigDecimal("12"));
         posService.addProductToStore(store.getId(), product.getId(), new BigDecimal("10"),
                 new BigDecimal("5"), BigDecimal.ZERO);
         posService.addSupplierProduct(supplier.getId(), product.getId(), "SUP-COFFEE-01", new BigDecimal("5"));
@@ -136,12 +136,12 @@ class PosWorkflowTest {
         assertThat(posService.getSupplierCostInStoreCurrency(zarStore.getId(), supplier.getId(),
                 zarProduct.getId())).isEqualByComparingTo("10.0000");
         assertThatIllegalArgumentException().isThrownBy(() -> posService.setDefaultCurrency(zar.getId()));
-        Sale sale = posService.recordSale(store.getId(), zar.getId(), new BigDecimal("46"),
+        Sale sale = posService.recordSale(store.getId(), zar.getId(), new BigDecimal("46.2"),
                 "CASH", shift.getId(), cashier.getId(),
                 List.of(new PosService.CheckoutLine(storeProduct.getId(), new BigDecimal("2"))));
         assertThat(sale.getSubtotal()).isEqualByComparingTo("20.0000");
-        assertThat(sale.getTaxTotal()).isEqualByComparingTo("3.0000");
-        assertThat(sale.getAmountDue()).isEqualByComparingTo("46.0000");
+        assertThat(sale.getTaxTotal()).isEqualByComparingTo("3.1000");
+        assertThat(sale.getAmountDue()).isEqualByComparingTo("46.2000");
         assertThat(sale.getChangeAmount()).isEqualByComparingTo("0.0000");
         assertThatIllegalArgumentException().isThrownBy(() ->
                 posService.authorizeProductCancellation(cashier.getId(), shift.getId(), storeProduct.getId(),
@@ -182,7 +182,7 @@ class PosWorkflowTest {
         posService.paySupplierInvoice(invoice.getId(), new BigDecimal("6"), "PAY-002");
         assertThat(dataManager.load(SupplierInvoice.class).id(invoice.getId()).one().getStatus()).isEqualTo("PAID");
 
-        Sale cancelledSale = posService.recordSale(store.getId(), usd.getId(), new BigDecimal("11.5"),
+        Sale cancelledSale = posService.recordSale(store.getId(), usd.getId(), new BigDecimal("11.55"),
                 "CASH", shift.getId(), cashier.getId(),
                 List.of(new PosService.CheckoutLine(storeProduct.getId(), BigDecimal.ONE)));
         posService.cancelTransaction(cashier.getId(), cancelledSale.getId(), "Duplicate transaction",
@@ -193,16 +193,72 @@ class PosWorkflowTest {
                 posService.closeDay(supervisor.getId(), "0123", store.getId()));
 
         PosShift closedShift = posService.closeShift(supervisor.getId(), "0123",
-                shift.getId(), new BigDecimal("43"));
-        assertThat(closedShift.getExpectedCash()).isEqualByComparingTo("43");
+                shift.getId(), new BigDecimal("43.1"));
+        assertThat(closedShift.getExpectedCash()).isEqualByComparingTo("43.1");
         assertThat(closedShift.getCashVariance()).isEqualByComparingTo("0");
         PosDayClose dayClose = posService.closeDay(supervisor.getId(), "0123", store.getId());
-        assertThat(dayClose.getCashSales()).isEqualByComparingTo("23");
+        assertThat(dayClose.getCashSales()).isEqualByComparingTo("23.1");
         assertThatIllegalArgumentException().isThrownBy(() ->
                 posService.openShift(supervisor.getId(), "0123", store.getId(),
                         cashier.getId(), BigDecimal.ZERO));
         posService.resetCheckoutPassword(cashier.getId(), "0000");
         assertThat(posService.authenticateCheckoutUser("cashier-test", "0000").getId())
                 .isEqualTo(cashier.getId());
+    }
+
+    @Test
+    @Transactional
+    void centralTaxRateChangesApplyToFutureSalesAndPreserveRecordedRates() {
+        Currency currency = posService.createCurrency("TAX", "Tax Test Currency");
+        posService.setDefaultCurrency(currency.getId());
+        Store store = posService.createStore("Tax Test Store", currency.getId());
+        CheckoutUser supervisor = posService.createCheckoutUser(
+                "tax-test-supervisor", "Tax Test Supervisor", "0123", "SUPERVISOR");
+        CheckoutUser cashier = posService.createCheckoutUser(
+                "tax-test-cashier", "Tax Test Cashier", "4567", "CASHIER");
+        TaxRate vatable = dataManager.load(TaxRate.class)
+                .query("select t from TaxRate t where t.code = 'VATABLE'").one();
+        assertThat(posService.getTaxRates()).hasSize(3);
+        assertThat(dataManager.load(TaxRate.class)
+                .query("select t from TaxRate t where t.code = 'NON_VATABLE'").one().getPercentage())
+                .isEqualByComparingTo("0");
+        assertThat(dataManager.load(TaxRate.class)
+                .query("select t from TaxRate t where t.code = 'EXEMPT'").one().getPercentage())
+                .isEqualByComparingTo("0");
+        Product product = posService.createProduct("Taxed Item", "taxed-item-barcode", "TAXED-ITEM",
+                vatable.getId(), BigDecimal.ZERO, new BigDecimal("100"));
+        StoreProduct item = posService.addProductToStore(store.getId(), product.getId(), null,
+                new BigDecimal("3"), BigDecimal.ZERO);
+        PosShift shift = posService.openShift(supervisor.getId(), "0123", store.getId(),
+                cashier.getId(), BigDecimal.ZERO);
+
+        Sale firstSale = posService.recordSale(store.getId(), currency.getId(), new BigDecimal("115.5"),
+                "CASH", shift.getId(), cashier.getId(),
+                List.of(new PosService.CheckoutLine(item.getId(), BigDecimal.ONE)));
+        SaleLine firstLine = dataManager.load(SaleLine.class)
+                .query("select l from SaleLine l where l.sale.id = :saleId")
+                .parameter("saleId", firstSale.getId()).one();
+        assertThat(firstLine.getTaxRate()).isEqualByComparingTo("15.5");
+        assertThat(firstLine.getTaxRateCode()).isEqualTo("VATABLE");
+
+        posService.updateTaxRate(vatable.getId(), new BigDecimal("20"));
+        assertThat(posService.scanProduct(store.getId(), product.getBarcode()).taxRate())
+                .isEqualByComparingTo("20");
+        Sale secondSale = posService.recordSale(store.getId(), currency.getId(), new BigDecimal("120"),
+                "CASH", shift.getId(), cashier.getId(),
+                List.of(new PosService.CheckoutLine(item.getId(), BigDecimal.ONE)));
+        SaleLine secondLine = dataManager.load(SaleLine.class)
+                .query("select l from SaleLine l where l.sale.id = :saleId")
+                .parameter("saleId", secondSale.getId()).one();
+        assertThat(secondLine.getTaxRate()).isEqualByComparingTo("20");
+        assertThat(firstLine.getTaxRate()).isEqualByComparingTo("15.5");
+    }
+
+    private java.util.UUID taxRateId(String code) {
+        return dataManager.load(TaxRate.class)
+                .query("select t from TaxRate t where t.code = :code")
+                .parameter("code", code)
+                .one()
+                .getId();
     }
 }

@@ -49,9 +49,9 @@ public class Product {
     private BigDecimal standardSellPrice = BigDecimal.ZERO;
 
     @NotNull
-    @DecimalMin("0.0")
-    @Column(name = "TAX_RATE", nullable = false, precision = 7, scale = 4)
-    private BigDecimal taxRate = BigDecimal.ZERO;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "TAX_RATE_ID", nullable = false)
+    private TaxRate taxRate;
 
     @Column(name = "ACTIVE", nullable = false)
     private Boolean active = true;
@@ -71,8 +71,8 @@ public class Product {
     public void setStandardCost(BigDecimal standardCost) { this.standardCost = standardCost; }
     public BigDecimal getStandardSellPrice() { return standardSellPrice; }
     public void setStandardSellPrice(BigDecimal standardSellPrice) { this.standardSellPrice = standardSellPrice; }
-    public BigDecimal getTaxRate() { return taxRate; }
-    public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
+    public TaxRate getTaxRate() { return taxRate; }
+    public void setTaxRate(TaxRate taxRate) { this.taxRate = taxRate; }
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
 }
