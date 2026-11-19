@@ -266,7 +266,7 @@ public class PosService {
         if (username == null || username.isBlank() || !isCheckoutPin(password)) {
             throw new IllegalArgumentException("Enter your checkout username and four-digit PIN.");
         }
-        CheckoutUser user = dataManager.load(CheckoutUser.class)
+        CheckoutUser user = dataManager.unconstrained().load(CheckoutUser.class)
                 .query("select u from CheckoutUser u where u.username = :username and u.active = true")
                 .parameter("username", username.trim())
                 .optional()

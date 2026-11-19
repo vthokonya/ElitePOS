@@ -5,9 +5,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 import zw.co.tayanasoft.elitepos.entity.*;
+import zw.co.tayanasoft.elitepos.security.DatabaseUserRepository;
 import zw.co.tayanasoft.elitepos.service.PosService;
 import zw.co.tayanasoft.elitepos.test_support.AuthenticatedAsAdmin;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -30,6 +33,51 @@ class PosWorkflowTest {
     private PosService posService;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private DatabaseUserRepository userRepository;
+
+    @Test
+    @Transactional
+    void checkoutSessionCanAuthenticateAndReadPosResources() {
+        Currency currency = posService.createCurrency("PST", "POS Test Currency");
+        Store store = posService.createStore("POS Access Test Store", currency.getId());
+        CheckoutUser supervisor = posService.createCheckoutUser(
+                "pos-access-supervisor", "POS Access Supervisor", "0123", "SUPERVISOR");
+        CheckoutUser cashier = posService.createCheckoutUser(
+                "pos-access-cashier", "POS Access Cashier", "4567", "CASHIER");
+        Product product = posService.createProduct("POS Access Product", "pos-access-barcode", "POS-ACCESS",
+                BigDecimal.ZERO, store.getId(), new BigDecimal("5"), new BigDecimal("3"), BigDecimal.ZERO);
+        StoreProduct item = dataManager.load(StoreProduct.class)
+                .query("select sp from StoreProduct sp where sp.store.id = :storeId and sp.product.id = :productId")
+                .parameter("storeId", store.getId())
+                .parameter("productId", product.getId())
+                .one();
+
+        var previousAuthentication = SecurityContextHolder.getContext().getAuthentication();
+        var anonymousUser = userRepository.getAnonymousUser();
+        var checkoutAuthentication = new UsernamePasswordAuthenticationToken(
+                anonymousUser, null, anonymousUser.getAuthorities());
+        SecurityContextHolder.getContext().setAuthentication(checkoutAuthentication);
+        try {
+            PosShift shift = posService.openShift(supervisor.getId(), "0123", store.getId(),
+                    cashier.getId(), BigDecimal.ZERO);
+            assertThat(posService.authenticateCheckoutUser("pos-access-cashier", "4567").getUsername())
+                    .isEqualTo("pos-access-cashier");
+            assertThat(posService.getActiveStores())
+                    .extracting(Store::getId)
+                    .contains(store.getId());
+            assertThat(posService.scanProduct(store.getId(), "pos-access-barcode").name())
+                    .isEqualTo("POS Access Product");
+            Sale sale = posService.recordSale(store.getId(), currency.getId(), new BigDecimal("5"),
+                    "CASH", shift.getId(), cashier.getId(),
+                    List.of(new PosService.CheckoutLine(item.getId(), BigDecimal.ONE)));
+            assertThat(posService.getShiftSales(shift.getId()))
+                    .extracting(Sale::getId)
+                    .contains(sale.getId());
+        } finally {
+            SecurityContextHolder.getContext().setAuthentication(previousAuthentication);
+        }
+    }
 
     @Test
     @Transactional
