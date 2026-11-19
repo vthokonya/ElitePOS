@@ -130,7 +130,7 @@ public class PosService {
                 .parameter("storeId", storeId)
                 .parameter("barcode", barcode.trim())
                 .optional()
-                .orElseThrow(() -> new IllegalArgumentException("No active product with barcode " + barcode + " is stocked at this store."));
+                .orElseThrow(() -> new IllegalArgumentException("Product with barcode " + barcode + " is out of stock."));
         return new ProductLookup(item.getId(), item.getProduct().getBarcode(), item.getProduct().getName(),
                 getStoreSellPrice(item), item.getProduct().getTaxRate().getPercentage(), item.getQuantity());
     }
