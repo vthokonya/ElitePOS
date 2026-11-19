@@ -52,6 +52,7 @@ public class PosView extends StandardView {
     private final Map<UUID, CartRow> cart = new LinkedHashMap<>();
     private CheckoutUser signedInUser;
     private PosShift cashierShift;
+    private Dialog startShiftDialog;
     private Store currentStore;
     private ComboBox<Store> storeField;
     private ComboBox<Currency> currencyField;
@@ -218,6 +219,8 @@ public class PosView extends StandardView {
         shiftsGrid = new Grid<>();
         shiftsGrid.addColumn(shift -> shift.getCashier().getDisplayName()).setHeader("Cashier");
         shiftsGrid.addColumn(shift -> shift.getStore().getName()).setHeader("Store");
+        shiftsGrid.addColumn(shift -> shift.getTerminalNumber() == null ? "" : shift.getTerminalNumber())
+                .setHeader("Terminal");
         shiftsGrid.addColumn(PosShift::getOpenedAt).setHeader("Opened");
         shiftsGrid.addColumn(shift -> format(shift.getOpeningFloat())).setHeader("Opening float");
         shiftsGrid.setHeight("13em");
@@ -269,18 +272,65 @@ public class PosView extends StandardView {
             return;
         }
         cashierShift = posService.getOpenShiftForCashier(store.getId(), signedInUser.getId());
-        if (cashierShift == null) {
-            shiftLabel.setText("No open shift assigned. Ask a supervisor to open one.");
-            notifyUser("A supervisor must open and assign your shift before checkout.");
+        if (cashierShift == null || !java.time.LocalDate.now().equals(cashierShift.getBusinessDate())) {
+            if (cashierShift == null) {
+                shiftLabel.setText("No open shift. Supervisor authorization is required to start one.");
+            } else {
+                shiftLabel.setText("An open shift from " + cashierShift.getBusinessDate()
+                        + " must be closed before starting today's shift.");
+            }
             salesGrid.setItems(List.of());
             refreshCart();
+            showStartShiftDialog(store);
             return;
         }
+        closeStartShiftDialog();
         shiftLabel.setText("Shift opened " + cashierShift.getOpenedAt());
         currencyField.setValue(store.getTradingCurrency());
         refreshShiftSales();
         barcodeField.focus();
         refreshCart();
+    }
+
+    private void showStartShiftDialog(Store store) {
+        if (startShiftDialog != null || store == null) {
+            return;
+        }
+        PosShift previousShift = posService.getOpenShiftForCashier(store.getId(), signedInUser.getId());
+        startShiftDialog = new Dialog();
+        startShiftDialog.setHeaderTitle("Open cashier shift");
+        TextField terminalNumber = new TextField("Terminal number");
+        terminalNumber.setRequired(true);
+        terminalNumber.setMaxLength(64);
+        TextField supervisorUsername = new TextField("Supervisor username");
+        supervisorUsername.setRequired(true);
+        PasswordField supervisorPin = checkoutPinField("Supervisor PIN (4 digits)");
+        if (previousShift != null) {
+            startShiftDialog.add(new Span("The open shift from " + previousShift.getBusinessDate()
+                    + " will be closed before today's shift is opened. Its expected cash will be recorded; "
+                    + "counted cash and variance will remain unrecorded."));
+        }
+        Button openShift = new Button("Authorize and open shift", event -> {
+            try {
+                cashierShift = posService.startCashierShift(supervisorUsername.getValue(), supervisorPin.getValue(),
+                        store.getId(), signedInUser.getId(), terminalNumber.getValue());
+                closeStartShiftDialog();
+                attachCashierShift(store);
+            } catch (IllegalArgumentException ex) {
+                notifyUser(ex.getMessage());
+            }
+        });
+        startShiftDialog.add(new VerticalLayout(terminalNumber, supervisorUsername, supervisorPin));
+        startShiftDialog.getFooter().add(openShift);
+        startShiftDialog.open();
+        terminalNumber.focus();
+    }
+
+    private void closeStartShiftDialog() {
+        if (startShiftDialog != null) {
+            startShiftDialog.close();
+            startShiftDialog = null;
+        }
     }
 
     private void scanBarcode() {

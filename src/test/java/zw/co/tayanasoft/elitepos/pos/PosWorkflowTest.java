@@ -254,6 +254,46 @@ class PosWorkflowTest {
         assertThat(firstLine.getTaxRate()).isEqualByComparingTo("15.5");
     }
 
+    @Test
+    @Transactional
+    void cashierCanOpenTerminalShiftAndStaleShiftClosesBeforeRollover() {
+        Currency currency = posService.createCurrency("ROL", "Rollover Test Currency");
+        posService.setDefaultCurrency(currency.getId());
+        Store store = posService.createStore("Rollover Test Store", currency.getId());
+        CheckoutUser supervisor = posService.createCheckoutUser(
+                "rollover-supervisor", "Rollover Supervisor", "0123", "SUPERVISOR");
+        CheckoutUser cashier = posService.createCheckoutUser(
+                "rollover-cashier", "Rollover Cashier", "4567", "CASHIER");
+        CheckoutUser otherCashier = posService.createCheckoutUser(
+                "rollover-cashier-two", "Rollover Cashier Two", "7890", "CASHIER");
+        PosShift oldShift = posService.openShift(supervisor.getId(), "0123", store.getId(),
+                cashier.getId(), new BigDecimal("20"));
+        Product product = posService.createProduct("Rollover Item", "rollover-item-barcode", "ROL-ITEM",
+                taxRateId("NON_VATABLE"), BigDecimal.ZERO, new BigDecimal("5"));
+        StoreProduct item = posService.addProductToStore(store.getId(), product.getId(), null,
+                BigDecimal.ONE, BigDecimal.ZERO);
+        posService.recordSale(store.getId(), currency.getId(), new BigDecimal("5"),
+                "CASH", oldShift.getId(), cashier.getId(),
+                List.of(new PosService.CheckoutLine(item.getId(), BigDecimal.ONE)));
+        oldShift.setBusinessDate(java.time.LocalDate.now().minusDays(1));
+        dataManager.save(oldShift);
+
+        PosShift newShift = posService.startCashierShift("rollover-supervisor", "0123",
+                store.getId(), cashier.getId(), " till-01 ");
+
+        PosShift closedOldShift = dataManager.load(PosShift.class).id(oldShift.getId()).one();
+        assertThat(closedOldShift.getStatus()).isEqualTo("CLOSED");
+        assertThat(closedOldShift.getClosedBy().getId()).isEqualTo(supervisor.getId());
+        assertThat(closedOldShift.getExpectedCash()).isEqualByComparingTo("25");
+        assertThat(closedOldShift.getCountedCash()).isNull();
+        assertThat(closedOldShift.getCashVariance()).isNull();
+        assertThat(newShift.getBusinessDate()).isEqualTo(java.time.LocalDate.now());
+        assertThat(newShift.getTerminalNumber()).isEqualTo("TILL-01");
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                posService.startCashierShift("rollover-supervisor", "0123",
+                        store.getId(), otherCashier.getId(), "till-01"));
+    }
+
     private java.util.UUID taxRateId(String code) {
         return dataManager.load(TaxRate.class)
                 .query("select t from TaxRate t where t.code = :code")

@@ -53,6 +53,8 @@ public class PosShift {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "CLOSED_BY_ID")
     private CheckoutUser closedBy;
+    @Column(name = "TERMINAL_NUMBER", length = 64)
+    private String terminalNumber;
     @Column(name = "EXPECTED_CASH", precision = 19, scale = 4)
     private BigDecimal expectedCash;
     @Column(name = "COUNTED_CASH", precision = 19, scale = 4)
@@ -84,6 +86,8 @@ public class PosShift {
     public void setClosedAt(LocalDateTime closedAt) { this.closedAt = closedAt; }
     public CheckoutUser getClosedBy() { return closedBy; }
     public void setClosedBy(CheckoutUser closedBy) { this.closedBy = closedBy; }
+    public String getTerminalNumber() { return terminalNumber; }
+    public void setTerminalNumber(String terminalNumber) { this.terminalNumber = terminalNumber; }
     public BigDecimal getExpectedCash() { return expectedCash; }
     public void setExpectedCash(BigDecimal expectedCash) { this.expectedCash = expectedCash; }
     public BigDecimal getCountedCash() { return countedCash; }

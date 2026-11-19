@@ -357,14 +357,73 @@ public class PosService {
 
     @Transactional(readOnly = true)
     public PosShift getOpenShiftForCashier(UUID storeId, UUID cashierId) {
-        return dataManager.load(PosShift.class)
+        List<PosShift> shifts = dataManager.load(PosShift.class)
                 .query("select s from PosShift s where s.store.id = :storeId and s.cashier.id = :cashierId "
-                        + "and s.status = 'OPEN' and s.businessDate = :businessDate")
+                        + "and s.status = 'OPEN' order by s.businessDate desc")
                 .parameter("storeId", storeId)
                 .parameter("cashierId", cashierId)
-                .parameter("businessDate", LocalDate.now())
-                .optional()
-                .orElse(null);
+                .maxResults(1)
+                .list();
+        return shifts.isEmpty() ? null : shifts.get(0);
+    }
+
+    @Transactional
+    public PosShift startCashierShift(String supervisorUsername, String supervisorPin, UUID storeId,
+                                     UUID cashierId, String terminalNumber) {
+        CheckoutUser supervisor = authenticateCheckoutUser(supervisorUsername, supervisorPin);
+        requireSupervisorRole(supervisor);
+        if (terminalNumber == null || terminalNumber.isBlank()) {
+            throw new IllegalArgumentException("Enter the terminal number for this POS device.");
+        }
+        String normalizedTerminal = terminalNumber.trim().toUpperCase(Locale.ROOT);
+        if (normalizedTerminal.length() > 64) {
+            throw new IllegalArgumentException("Terminal number must be 64 characters or fewer.");
+        }
+        Store store = require(Store.class, storeId, "Store");
+        CheckoutUser cashier = requireCashier(require(CheckoutUser.class, cashierId, "Cashier"));
+        if (!Boolean.TRUE.equals(store.getActive())) {
+            throw new IllegalArgumentException("Select an active store.");
+        }
+        LocalDate businessDate = LocalDate.now();
+        if (dayAlreadyClosed(storeId, businessDate)) {
+            throw new IllegalArgumentException("The trading day has already been closed for this store.");
+        }
+        List<PosShift> openShifts = dataManager.load(PosShift.class)
+                .query("select s from PosShift s where s.store.id = :storeId and s.cashier.id = :cashierId "
+                        + "and s.status = 'OPEN' order by s.businessDate")
+                .parameter("storeId", storeId)
+                .parameter("cashierId", cashierId)
+                .list();
+        for (PosShift openShift : openShifts) {
+            if (openShift.getBusinessDate().isEqual(businessDate)) {
+                throw new IllegalArgumentException("This cashier already has an open shift for today.");
+            }
+            if (openShift.getBusinessDate().isAfter(businessDate)) {
+                throw new IllegalArgumentException("An open shift has a future business date and must be resolved first.");
+            }
+            closeShiftForDateRollover(openShift, supervisor);
+        }
+        boolean terminalInUse = !dataManager.load(PosShift.class)
+                .query("select s from PosShift s where s.store.id = :storeId and s.status = 'OPEN' "
+                        + "and upper(s.terminalNumber) = :terminalNumber")
+                .parameter("storeId", storeId)
+                .parameter("terminalNumber", normalizedTerminal)
+                .maxResults(1)
+                .list()
+                .isEmpty();
+        if (terminalInUse) {
+            throw new IllegalArgumentException("This terminal already has an open shift at the selected store.");
+        }
+        PosShift shift = dataManager.create(PosShift.class);
+        shift.setStore(store);
+        shift.setCashier(cashier);
+        shift.setOpenedBy(supervisor);
+        shift.setBusinessDate(businessDate);
+        shift.setOpenedAt(LocalDateTime.now());
+        shift.setOpeningFloat(BigDecimal.ZERO);
+        shift.setStatus("OPEN");
+        shift.setTerminalNumber(normalizedTerminal);
+        return dataManager.save(shift);
     }
 
     @Transactional
@@ -411,11 +470,7 @@ public class PosService {
         if (!"OPEN".equals(shift.getStatus())) {
             throw new IllegalArgumentException("This shift is already closed.");
         }
-        BigDecimal cashSales = getShiftSales(shiftId).stream()
-                .filter(sale -> "COMPLETED".equals(sale.getStatus()) && "CASH".equals(sale.getPaymentMethod()))
-                .map(Sale::getTotal)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal expected = money(shift.getOpeningFloat().add(cashSales));
+        BigDecimal expected = calculateExpectedCash(shift);
         shift.setExpectedCash(expected);
         shift.setCountedCash(money(countedCash));
         shift.setCashVariance(money(countedCash.subtract(expected)));
@@ -423,6 +478,22 @@ public class PosService {
         shift.setClosedAt(LocalDateTime.now());
         shift.setStatus("CLOSED");
         return dataManager.save(shift);
+    }
+
+    private void closeShiftForDateRollover(PosShift shift, CheckoutUser supervisor) {
+        shift.setExpectedCash(calculateExpectedCash(shift));
+        shift.setClosedBy(supervisor);
+        shift.setClosedAt(LocalDateTime.now());
+        shift.setStatus("CLOSED");
+        dataManager.save(shift);
+    }
+
+    private BigDecimal calculateExpectedCash(PosShift shift) {
+        BigDecimal cashSales = getShiftSales(shift.getId()).stream()
+                .filter(sale -> "COMPLETED".equals(sale.getStatus()) && "CASH".equals(sale.getPaymentMethod()))
+                .map(Sale::getTotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return money(shift.getOpeningFloat().add(cashSales));
     }
 
     @Transactional
