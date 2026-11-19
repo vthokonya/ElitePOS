@@ -49,7 +49,6 @@ public class CatalogView extends StandardView {
     private DataManager dataManager;
 
     private ComboBox<Currency> storeCurrency;
-    private ComboBox<Store> productStore;
     private ComboBox<Store> addStore;
     private ComboBox<Product> existingProduct;
     private ComboBox<Currency> rateTarget;
@@ -59,9 +58,6 @@ public class CatalogView extends StandardView {
     private TextField productBarcode;
     private TextField productSku;
     private BigDecimalField productTax;
-    private BigDecimalField productPrice;
-    private BigDecimalField openingStock;
-    private BigDecimalField reorderLevel;
     private Grid<Product> productGrid;
     private TextField editProductName;
     private TextField editProductBarcode;
@@ -165,21 +161,16 @@ public class CatalogView extends StandardView {
         productBarcode = new TextField("Barcode");
         productSku = new TextField("SKU");
         productTax = numberField("Tax rate (%)", BigDecimal.ZERO);
-        productStore = new ComboBox<>("Initial store");
-        productStore.setItemLabelGenerator(Store::getName);
-        productPrice = numberField("Selling price", BigDecimal.ZERO);
-        openingStock = numberField("Opening stock", BigDecimal.ZERO);
-        reorderLevel = numberField("Reorder level", BigDecimal.ZERO);
         Button createProduct = new Button("Create product", event -> run(() -> {
             posService.createProduct(productName.getValue(), productBarcode.getValue(), productSku.getValue(),
-                    value(productTax), id(productStore.getValue()), value(productPrice), value(openingStock), value(reorderLevel));
+                    value(productTax));
             productName.clear();
             productBarcode.clear();
             productSku.clear();
             refreshData();
         }));
-        page.add(new com.vaadin.flow.component.html.H3("Add product"), row(productName, productBarcode, productSku, productTax),
-                row(productStore, productPrice, openingStock, reorderLevel, createProduct));
+        page.add(new com.vaadin.flow.component.html.H3("Add global product"),
+                row(productName, productBarcode, productSku, productTax, createProduct));
 
         productGrid = new Grid<>();
         productGrid.addColumn(Product::getName).setHeader("Product");
@@ -223,7 +214,7 @@ public class CatalogView extends StandardView {
                     value(newStoreStock), value(newStoreReorder));
             refreshData();
         }));
-        page.add(new com.vaadin.flow.component.html.H3("List product at another store"),
+        page.add(new com.vaadin.flow.component.html.H3("List product at a store"),
                 row(existingProduct, addStore, newStorePrice, newStoreStock, newStoreReorder, addProductToStore));
 
         stockGrid = new Grid<>();
@@ -405,7 +396,6 @@ public class CatalogView extends StandardView {
         List<CheckoutUser> checkoutUsers = dataManager.load(CheckoutUser.class)
                 .query("select u from CheckoutUser u order by u.displayName").list();
         if (storeCurrency != null) storeCurrency.setItems(currencies);
-        if (productStore != null) productStore.setItems(stores);
         if (addStore != null) addStore.setItems(stores);
         if (existingProduct != null) existingProduct.setItems(products);
         if (rateFrom != null) rateFrom.setItems(currencies);

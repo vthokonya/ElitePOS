@@ -46,7 +46,13 @@ class PosWorkflowTest {
         CheckoutUser cashier = posService.createCheckoutUser(
                 "pos-access-cashier", "POS Access Cashier", "4567", "CASHIER");
         Product product = posService.createProduct("POS Access Product", "pos-access-barcode", "POS-ACCESS",
-                BigDecimal.ZERO, store.getId(), new BigDecimal("5"), new BigDecimal("3"), BigDecimal.ZERO);
+                BigDecimal.ZERO);
+        assertThat(dataManager.load(StoreProduct.class)
+                .query("select sp from StoreProduct sp where sp.product.id = :productId")
+                .parameter("productId", product.getId())
+                .list()).isEmpty();
+        posService.addProductToStore(store.getId(), product.getId(), new BigDecimal("5"),
+                new BigDecimal("3"), BigDecimal.ZERO);
         StoreProduct item = dataManager.load(StoreProduct.class)
                 .query("select sp from StoreProduct sp where sp.store.id = :storeId and sp.product.id = :productId")
                 .parameter("storeId", store.getId())
@@ -105,7 +111,9 @@ class PosWorkflowTest {
         PosShift shift = posService.openShift(supervisor.getId(), "0123", store.getId(),
                 cashier.getId(), new BigDecimal("20"));
         Product product = posService.createProduct("Coffee", "barcode-test-coffee", "COFFEE-01",
-                new BigDecimal("15"), store.getId(), new BigDecimal("10"), new BigDecimal("5"), BigDecimal.ZERO);
+                new BigDecimal("15"));
+        posService.addProductToStore(store.getId(), product.getId(), new BigDecimal("10"),
+                new BigDecimal("5"), BigDecimal.ZERO);
         posService.addSupplierProduct(supplier.getId(), product.getId(), "SUP-COFFEE-01", new BigDecimal("5"));
         StoreProduct storeProduct = dataManager.load(StoreProduct.class)
                 .query("select sp from StoreProduct sp where sp.store.id = :storeId and sp.product.id = :productId")

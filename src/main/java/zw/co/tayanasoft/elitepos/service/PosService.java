@@ -579,39 +579,20 @@ public class PosService {
     }
 
     @Transactional
-    public Product createProduct(String name, String barcode, String sku, BigDecimal taxRate,
-                                 UUID storeId, BigDecimal sellPrice, BigDecimal initialQuantity,
-                                 BigDecimal reorderLevel) {
+    public Product createProduct(String name, String barcode, String sku, BigDecimal taxRate) {
         if (name == null || name.isBlank() || barcode == null || barcode.isBlank()) {
             throw new IllegalArgumentException("Product name and barcode are required.");
         }
         if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException("Tax rate must be between 0 and 100 percent.");
         }
-        requireNonNegative(sellPrice, "Selling price");
-        requireNonNegative(initialQuantity, "Initial quantity");
-        requireNonNegative(reorderLevel, "Reorder level");
-        Store store = require(Store.class, storeId, "Store");
         Product product = dataManager.create(Product.class);
         product.setName(name.trim());
         product.setBarcode(barcode.trim());
         product.setSku(sku == null || sku.isBlank() ? null : sku.trim());
         product.setTaxRate(taxRate);
         product.setActive(true);
-        product = dataManager.save(product);
-
-        StoreProduct item = dataManager.create(StoreProduct.class);
-        item.setStore(store);
-        item.setProduct(product);
-        item.setSellPrice(money(sellPrice));
-        item.setQuantity(initialQuantity);
-        item.setReorderLevel(reorderLevel);
-        item.setActive(true);
-        dataManager.save(item);
-        if (initialQuantity.signum() > 0) {
-            dataManager.save(stockMovement(item, initialQuantity, "OPENING", "Opening stock"));
-        }
-        return product;
+        return dataManager.save(product);
     }
 
     @Transactional
