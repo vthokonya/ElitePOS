@@ -91,7 +91,7 @@ public class PosView extends StandardView {
                 }
                 buildCheckoutScreen();
             } catch (IllegalArgumentException ex) {
-                notifyUser(ex.getMessage());
+                notifyError(ex.getMessage());
             }
         });
         password.addKeyPressListener(Key.ENTER, event -> login.click());
@@ -205,7 +205,7 @@ public class PosView extends StandardView {
         BigDecimalField openingFloat = numberField("Opening float", BigDecimal.ZERO);
         Button openShift = new Button("Open shift", event -> {
             if (storeSelector.getValue() == null || cashierSelector.getValue() == null) {
-                notifyUser("Select a store and cashier.");
+                notifyError("Select a store and cashier.");
                 return;
             }
             requestPassword("Authorize shift opening", password -> run(() -> {
@@ -229,7 +229,7 @@ public class PosView extends StandardView {
         BigDecimalField countedCash = numberField("Counted cash", BigDecimal.ZERO);
         Button closeShift = new Button("Close selected shift", event -> {
             if (selectedShift == null) {
-                notifyUser("Select an open shift to close.");
+                notifyError("Select an open shift to close.");
                 return;
             }
             requestPassword("Authorize shift close", password -> run(() -> {
@@ -242,7 +242,7 @@ public class PosView extends StandardView {
         });
         Button closeDay = new Button("Close trading day", event -> {
             if (storeSelector.getValue() == null) {
-                notifyUser("Select a store.");
+                notifyError("Select a store.");
                 return;
             }
             requestPassword("Authorize end-of-day close", password -> run(() -> {
@@ -317,7 +317,7 @@ public class PosView extends StandardView {
                 closeStartShiftDialog();
                 attachCashierShift(store);
             } catch (IllegalArgumentException ex) {
-                notifyUser(ex.getMessage());
+                notifyError(ex.getMessage());
             }
         });
         startShiftDialog.add(new VerticalLayout(terminalNumber, supervisorUsername, supervisorPin));
@@ -335,7 +335,7 @@ public class PosView extends StandardView {
 
     private void scanBarcode() {
         if (cashierShift == null || currentStore == null) {
-            notifyUser("You need an open shift before scanning products.");
+            notifyError("You need an open shift before scanning products.");
             return;
         }
         try {
@@ -343,7 +343,7 @@ public class PosView extends StandardView {
             CartRow row = cart.get(product.storeProductId());
             BigDecimal nextQuantity = row == null ? BigDecimal.ONE : row.quantity().add(BigDecimal.ONE);
             if (nextQuantity.compareTo(product.availableQuantity()) > 0) {
-                notifyUser("Only " + product.availableQuantity().stripTrailingZeros().toPlainString()
+                notifyError("Only " + product.availableQuantity().stripTrailingZeros().toPlainString()
                         + " " + product.name() + " available.");
                 return;
             }
@@ -353,7 +353,7 @@ public class PosView extends StandardView {
             barcodeField.clear();
             barcodeField.focus();
         } catch (IllegalArgumentException ex) {
-            notifyUser(ex.getMessage());
+            notifyError(ex.getMessage());
             barcodeField.focus();
         }
     }
@@ -361,7 +361,7 @@ public class PosView extends StandardView {
     private void completeSale() {
         if (cashierShift == null || currentStore == null || currencyField.getValue() == null
                 || paymentMethodField.getValue() == null) {
-            notifyUser("Select an active shift, payment currency, and tender type.");
+            notifyError("Select an active shift, payment currency, and tender type.");
             return;
         }
         try {
@@ -379,13 +379,13 @@ public class PosView extends StandardView {
             refreshShiftSales();
             barcodeField.focus();
         } catch (IllegalArgumentException ex) {
-            notifyUser(ex.getMessage());
+            notifyError(ex.getMessage());
         }
     }
 
     private void authorizeProductCancellation() {
         if (selectedCartRow == null || cashierShift == null) {
-            notifyUser("Select a product from the current cart.");
+            notifyError("Select a product from the current cart.");
             return;
         }
         CartRow row = selectedCartRow;
@@ -402,7 +402,7 @@ public class PosView extends StandardView {
 
     private void authorizeTransactionCancellation() {
         if (selectedSale == null || cashierShift == null) {
-            notifyUser("Select a transaction from the current shift.");
+            notifyError("Select a transaction from the current shift.");
             return;
         }
         Sale sale = selectedSale;
@@ -424,7 +424,7 @@ public class PosView extends StandardView {
         reason.setWidthFull();
         Button authorize = new Button("Authorize", event -> {
             if (reason.getValue() == null || reason.getValue().isBlank()) {
-                notifyUser("Enter a cancellation reason.");
+                notifyError("Enter a cancellation reason.");
                 return;
             }
             dialog.close();
@@ -487,7 +487,8 @@ public class PosView extends StandardView {
             totalLabel.setText("Total: " + format(cartTotal()) + " " + currentStore.getTradingCurrency().getCode()
                     + " | Due: " + format(cartTotal().multiply(rate)) + " " + currencyField.getValue().getCode());
         } catch (IllegalArgumentException ex) {
-            rateLabel.setText(ex.getMessage());
+            notifyError(ex.getMessage());
+            rateLabel.setText("Exchange rate unavailable.");
             totalLabel.setText("Total: " + format(cartTotal()) + " "
                     + currentStore.getTradingCurrency().getCode() + " | Exchange rate unavailable");
         }
@@ -515,7 +516,7 @@ public class PosView extends StandardView {
         try {
             operation.run();
         } catch (IllegalArgumentException ex) {
-            notifyUser(ex.getMessage());
+            notifyError(ex.getMessage());
         }
     }
 
@@ -543,6 +544,18 @@ public class PosView extends StandardView {
 
     private static void notifyUser(String message) {
         Notification.show(message == null ? "Operation failed." : message, 4000, Notification.Position.BOTTOM_START);
+    }
+
+    private static void notifyError(String message) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("POS error");
+        Span messageText = new Span(message == null ? "Operation failed." : message);
+        messageText.getStyle().set("white-space", "pre-wrap");
+        Button ok = new Button("OK", event -> dialog.close());
+        dialog.add(messageText);
+        dialog.getFooter().add(ok);
+        dialog.open();
+        ok.focus();
     }
 
     private record CartRow(UUID storeProductId, String name, String barcode, BigDecimal quantity,
