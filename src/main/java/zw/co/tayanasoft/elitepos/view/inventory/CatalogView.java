@@ -49,6 +49,7 @@ public class CatalogView extends StandardView {
     private DataManager dataManager;
 
     private ComboBox<Currency> storeCurrency;
+    private ComboBox<Currency> defaultCurrency;
     private ComboBox<Store> addStore;
     private ComboBox<Product> existingProduct;
     private ComboBox<Currency> rateTarget;
@@ -58,17 +59,22 @@ public class CatalogView extends StandardView {
     private TextField productBarcode;
     private TextField productSku;
     private BigDecimalField productTax;
+    private BigDecimalField productStandardCost;
+    private BigDecimalField productStandardSellPrice;
     private Grid<Product> productGrid;
     private TextField editProductName;
     private TextField editProductBarcode;
     private TextField editProductSku;
     private BigDecimalField editProductTax;
+    private BigDecimalField editProductStandardCost;
+    private BigDecimalField editProductStandardSellPrice;
     private Product selectedProduct;
     private Grid<Supplier> supplierGrid;
     private TextField supplierName;
     private TextField supplierPhone;
     private TextField supplierEmail;
     private TextField supplierAddress;
+    private ComboBox<Currency> supplierCurrency;
     private Supplier selectedSupplier;
     private ComboBox<Supplier> linkSupplier;
     private ComboBox<Product> linkProduct;
@@ -135,6 +141,13 @@ public class CatalogView extends StandardView {
         currencyGrid.addColumn(currency -> Boolean.TRUE.equals(currency.getActive()) ? "Active" : "Inactive").setHeader("Status");
         currencyGrid.setHeight("12em");
 
+        defaultCurrency = new ComboBox<>("System default currency");
+        defaultCurrency.setItemLabelGenerator(Currency::getCode);
+        Button saveDefaultCurrency = new Button("Set default currency", event -> run(() -> {
+            posService.setDefaultCurrency(id(defaultCurrency.getValue()));
+            notifyUser("Default currency saved.");
+        }));
+
         TextField storeName = new TextField("Store name");
         storeCurrency = new ComboBox<>("Trading currency");
         storeCurrency.setItemLabelGenerator(Currency::getCode);
@@ -151,43 +164,56 @@ public class CatalogView extends StandardView {
         storeGrid.setHeight("12em");
 
         page.add(new com.vaadin.flow.component.html.H3("Currencies"), currencyForm, currencyGrid,
+                row(defaultCurrency, saveDefaultCurrency),
                 new com.vaadin.flow.component.html.H3("Stores"), storeForm, storeGrid);
         return page;
     }
 
     private Component buildProductPage() {
         VerticalLayout page = page();
+        Currency pricingCurrency = posService.getDefaultCurrency();
+        String priceCurrencyLabel = pricingCurrency == null ? "default currency" : pricingCurrency.getCode();
         productName = new TextField("Product name");
         productBarcode = new TextField("Barcode");
         productSku = new TextField("SKU");
         productTax = numberField("Tax rate (%)", BigDecimal.ZERO);
+        productStandardCost = numberField("Standard cost (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
+        productStandardSellPrice = numberField("Standard selling price (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
         Button createProduct = new Button("Create product", event -> run(() -> {
             posService.createProduct(productName.getValue(), productBarcode.getValue(), productSku.getValue(),
-                    value(productTax));
+                    value(productTax), value(productStandardCost), value(productStandardSellPrice));
             productName.clear();
             productBarcode.clear();
             productSku.clear();
             refreshData();
         }));
         page.add(new com.vaadin.flow.component.html.H3("Add global product"),
-                row(productName, productBarcode, productSku, productTax, createProduct));
+                row(productName, productBarcode, productSku, productTax),
+                row(productStandardCost, productStandardSellPrice, createProduct));
 
         productGrid = new Grid<>();
         productGrid.addColumn(Product::getName).setHeader("Product");
         productGrid.addColumn(Product::getBarcode).setHeader("Barcode");
         productGrid.addColumn(Product::getSku).setHeader("SKU");
+        productGrid.addColumn(product -> product.getStandardCost().stripTrailingZeros().toPlainString())
+                .setHeader("Standard cost (" + priceCurrencyLabel + ")");
+        productGrid.addColumn(product -> product.getStandardSellPrice().stripTrailingZeros().toPlainString())
+                .setHeader("Standard sell price (" + priceCurrencyLabel + ")");
         productGrid.addColumn(product -> product.getTaxRate().stripTrailingZeros().toPlainString() + "%").setHeader("Tax");
         productGrid.setHeight("13em");
         editProductName = new TextField("Name");
         editProductBarcode = new TextField("Barcode");
         editProductSku = new TextField("SKU");
         editProductTax = numberField("Tax rate (%)", BigDecimal.ZERO);
+        editProductStandardCost = numberField("Standard cost (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
+        editProductStandardSellPrice = numberField("Standard selling price (" + priceCurrencyLabel + ")", BigDecimal.ZERO);
         Button saveProduct = new Button("Save product changes", event -> run(() -> {
             if (selectedProduct == null) {
                 throw new IllegalArgumentException("Select a product to edit.");
             }
             posService.updateProduct(selectedProduct.getId(), editProductName.getValue(), editProductBarcode.getValue(),
-                    editProductSku.getValue(), value(editProductTax));
+                    editProductSku.getValue(), value(editProductTax), value(editProductStandardCost),
+                    value(editProductStandardSellPrice));
             refreshData();
         }));
         productGrid.asSingleSelect().addValueChangeListener(event -> {
@@ -197,20 +223,24 @@ public class CatalogView extends StandardView {
                 editProductBarcode.setValue(selectedProduct.getBarcode());
                 editProductSku.setValue(selectedProduct.getSku() == null ? "" : selectedProduct.getSku());
                 editProductTax.setValue(selectedProduct.getTaxRate());
+                editProductStandardCost.setValue(selectedProduct.getStandardCost());
+                editProductStandardSellPrice.setValue(selectedProduct.getStandardSellPrice());
             }
         });
         page.add(new com.vaadin.flow.component.html.H3("Edit product"), productGrid,
-                row(editProductName, editProductBarcode, editProductSku, editProductTax, saveProduct));
+                row(editProductName, editProductBarcode, editProductSku, editProductTax),
+                row(editProductStandardCost, editProductStandardSellPrice, saveProduct));
 
         existingProduct = new ComboBox<>("Product");
         existingProduct.setItemLabelGenerator(Product::getName);
         addStore = new ComboBox<>("Store");
         addStore.setItemLabelGenerator(Store::getName);
-        BigDecimalField newStorePrice = numberField("Store selling price", BigDecimal.ZERO);
+        BigDecimalField newStorePrice = numberField("Store price override (blank = standard)", BigDecimal.ZERO);
+        newStorePrice.clear();
         BigDecimalField newStoreStock = numberField("Initial stock", BigDecimal.ZERO);
         BigDecimalField newStoreReorder = numberField("Reorder level", BigDecimal.ZERO);
         Button addProductToStore = new Button("Add product to store", event -> run(() -> {
-            posService.addProductToStore(id(addStore.getValue()), id(existingProduct.getValue()), value(newStorePrice),
+            posService.addProductToStore(id(addStore.getValue()), id(existingProduct.getValue()), newStorePrice.getValue(),
                     value(newStoreStock), value(newStoreReorder));
             refreshData();
         }));
@@ -221,10 +251,12 @@ public class CatalogView extends StandardView {
         stockGrid.addColumn(item -> item.getStore().getName()).setHeader("Store");
         stockGrid.addColumn(item -> item.getProduct().getName()).setHeader("Product");
         stockGrid.addColumn(item -> item.getQuantity().stripTrailingZeros().toPlainString()).setHeader("On hand");
-        stockGrid.addColumn(item -> item.getSellPrice().stripTrailingZeros().toPlainString()).setHeader("Price");
+        stockGrid.addColumn(item -> posService.getStoreSellPrice(item.getId()).stripTrailingZeros().toPlainString())
+                .setHeader("Effective selling price");
         stockGrid.addColumn(item -> item.getReorderLevel().stripTrailingZeros().toPlainString()).setHeader("Reorder at");
         stockGrid.setHeight("13em");
-        editPrice = numberField("Selling price", BigDecimal.ZERO);
+        editPrice = numberField("Store price override (blank = standard)", BigDecimal.ZERO);
+        editPrice.clear();
         editReorder = numberField("Reorder level", BigDecimal.ZERO);
         stockAdjustment = numberField("Stock adjustment (+/-)", BigDecimal.ZERO);
         adjustmentReason = new TextField("Adjustment reason");
@@ -232,7 +264,7 @@ public class CatalogView extends StandardView {
             if (selectedStoreProduct == null) {
                 throw new IllegalArgumentException("Select store inventory to update.");
             }
-            posService.updateStoreProduct(selectedStoreProduct.getId(), value(editPrice), value(editReorder),
+            posService.updateStoreProduct(selectedStoreProduct.getId(), editPrice.getValue(), value(editReorder),
                     value(stockAdjustment), adjustmentReason.getValue());
             stockAdjustment.setValue(BigDecimal.ZERO);
             adjustmentReason.clear();
@@ -241,7 +273,7 @@ public class CatalogView extends StandardView {
         stockGrid.asSingleSelect().addValueChangeListener(event -> {
             selectedStoreProduct = event.getValue();
             if (selectedStoreProduct != null) {
-                editPrice.setValue(selectedStoreProduct.getSellPrice());
+                editPrice.setValue(selectedStoreProduct.getSellPriceOverride());
                 editReorder.setValue(selectedStoreProduct.getReorderLevel());
             }
         });
@@ -256,13 +288,15 @@ public class CatalogView extends StandardView {
         supplierPhone = new TextField("Phone");
         supplierEmail = new TextField("Email");
         supplierAddress = new TextField("Address");
+        supplierCurrency = new ComboBox<>("Supplier currency");
+        supplierCurrency.setItemLabelGenerator(Currency::getCode);
         Button addSupplier = new Button("Add supplier", event -> run(() -> {
             if (selectedSupplier == null) {
                 posService.createSupplier(supplierName.getValue(), supplierPhone.getValue(),
-                        supplierEmail.getValue(), supplierAddress.getValue());
+                        supplierEmail.getValue(), supplierAddress.getValue(), id(supplierCurrency.getValue()));
             } else {
                 posService.updateSupplier(selectedSupplier.getId(), supplierName.getValue(), supplierPhone.getValue(),
-                        supplierEmail.getValue(), supplierAddress.getValue());
+                        supplierEmail.getValue(), supplierAddress.getValue(), id(supplierCurrency.getValue()));
                 selectedSupplier = null;
                 event.getSource().setText("Add supplier");
             }
@@ -270,10 +304,13 @@ public class CatalogView extends StandardView {
             supplierPhone.clear();
             supplierEmail.clear();
             supplierAddress.clear();
+            supplierCurrency.clear();
             refreshData();
         }));
         supplierGrid = new Grid<>();
         supplierGrid.addColumn(Supplier::getName).setHeader("Supplier");
+        supplierGrid.addColumn(supplier -> supplier.getCurrency() == null ? "Not set" : supplier.getCurrency().getCode())
+                .setHeader("Currency");
         supplierGrid.addColumn(Supplier::getPhone).setHeader("Phone");
         supplierGrid.addColumn(Supplier::getEmail).setHeader("Email");
         supplierGrid.setHeight("15em");
@@ -284,6 +321,7 @@ public class CatalogView extends StandardView {
                 supplierPhone.setValue(selectedSupplier.getPhone() == null ? "" : selectedSupplier.getPhone());
                 supplierEmail.setValue(selectedSupplier.getEmail() == null ? "" : selectedSupplier.getEmail());
                 supplierAddress.setValue(selectedSupplier.getAddress() == null ? "" : selectedSupplier.getAddress());
+                supplierCurrency.setValue(selectedSupplier.getCurrency());
                 addSupplier.setText("Save supplier changes");
             }
         });
@@ -292,7 +330,7 @@ public class CatalogView extends StandardView {
         linkProduct = new ComboBox<>("Product");
         linkProduct.setItemLabelGenerator(Product::getName);
         TextField supplierSku = new TextField("Supplier product code");
-        BigDecimalField supplierUnitCost = numberField("Last unit cost", BigDecimal.ZERO);
+        BigDecimalField supplierUnitCost = numberField("Supplier unit cost (supplier currency)", BigDecimal.ZERO);
         Button linkProductButton = new Button("Link product to supplier", event -> run(() -> {
             posService.addSupplierProduct(id(linkSupplier.getValue()), id(linkProduct.getValue()),
                     supplierSku.getValue(), value(supplierUnitCost));
@@ -302,10 +340,12 @@ public class CatalogView extends StandardView {
         supplierProductGrid.addColumn(item -> item.getSupplier().getName()).setHeader("Supplier");
         supplierProductGrid.addColumn(item -> item.getProduct().getName()).setHeader("Product");
         supplierProductGrid.addColumn(SupplierProduct::getSupplierSku).setHeader("Supplier code");
-        supplierProductGrid.addColumn(item -> item.getLastUnitCost().stripTrailingZeros().toPlainString()).setHeader("Last unit cost");
+        supplierProductGrid.addColumn(item -> item.getLastUnitCost().stripTrailingZeros().toPlainString() + " "
+                + (item.getSupplier().getCurrency() == null ? "" : item.getSupplier().getCurrency().getCode()))
+                .setHeader("Supplier cost");
         supplierProductGrid.setHeight("13em");
         page.add(new com.vaadin.flow.component.html.H3("Add or update supplier"),
-                row(supplierName, supplierPhone, supplierEmail, supplierAddress, addSupplier), supplierGrid,
+                row(supplierName, supplierPhone, supplierEmail, supplierAddress, supplierCurrency, addSupplier), supplierGrid,
                 new com.vaadin.flow.component.html.H3("Products supplied"), row(linkSupplier, linkProduct,
                         supplierSku, supplierUnitCost, linkProductButton), supplierProductGrid);
         return page;
@@ -396,6 +436,10 @@ public class CatalogView extends StandardView {
         List<CheckoutUser> checkoutUsers = dataManager.load(CheckoutUser.class)
                 .query("select u from CheckoutUser u order by u.displayName").list();
         if (storeCurrency != null) storeCurrency.setItems(currencies);
+        if (defaultCurrency != null) {
+            defaultCurrency.setItems(currencies);
+            defaultCurrency.setValue(posService.getDefaultCurrency());
+        }
         if (addStore != null) addStore.setItems(stores);
         if (existingProduct != null) existingProduct.setItems(products);
         if (rateFrom != null) rateFrom.setItems(currencies);
@@ -405,6 +449,7 @@ public class CatalogView extends StandardView {
         if (productGrid != null) productGrid.setItems(products);
         if (stockGrid != null) stockGrid.setItems(stock);
         if (supplierGrid != null) supplierGrid.setItems(suppliers);
+        if (supplierCurrency != null) supplierCurrency.setItems(currencies);
         if (linkSupplier != null) linkSupplier.setItems(suppliers);
         if (linkProduct != null) linkProduct.setItems(products);
         if (supplierProductGrid != null) supplierProductGrid.setItems(suppliedProducts);

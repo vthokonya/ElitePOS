@@ -40,6 +40,16 @@ public class Product {
 
     @NotNull
     @DecimalMin("0.0")
+    @Column(name = "STANDARD_COST", nullable = false, precision = 19, scale = 4)
+    private BigDecimal standardCost = BigDecimal.ZERO;
+
+    @NotNull
+    @DecimalMin("0.0")
+    @Column(name = "STANDARD_SELL_PRICE", nullable = false, precision = 19, scale = 4)
+    private BigDecimal standardSellPrice = BigDecimal.ZERO;
+
+    @NotNull
+    @DecimalMin("0.0")
     @Column(name = "TAX_RATE", nullable = false, precision = 7, scale = 4)
     private BigDecimal taxRate = BigDecimal.ZERO;
 
@@ -57,6 +67,10 @@ public class Product {
     public void setBarcode(String barcode) { this.barcode = barcode; }
     public String getSku() { return sku; }
     public void setSku(String sku) { this.sku = sku; }
+    public BigDecimal getStandardCost() { return standardCost; }
+    public void setStandardCost(BigDecimal standardCost) { this.standardCost = standardCost; }
+    public BigDecimal getStandardSellPrice() { return standardSellPrice; }
+    public void setStandardSellPrice(BigDecimal standardSellPrice) { this.standardSellPrice = standardSellPrice; }
     public BigDecimal getTaxRate() { return taxRate; }
     public void setTaxRate(BigDecimal taxRate) { this.taxRate = taxRate; }
     public Boolean getActive() { return active; }

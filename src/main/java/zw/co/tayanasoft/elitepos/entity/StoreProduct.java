@@ -33,10 +33,9 @@ public class StoreProduct {
     @JoinColumn(name = "PRODUCT_ID", nullable = false)
     private Product product;
 
-    @NotNull
     @DecimalMin("0.0")
-    @Column(name = "SELL_PRICE", nullable = false, precision = 19, scale = 4)
-    private BigDecimal sellPrice = BigDecimal.ZERO;
+    @Column(name = "SELL_PRICE", precision = 19, scale = 4)
+    private BigDecimal sellPrice;
 
     @NotNull
     @Column(name = "QUANTITY", nullable = false, precision = 19, scale = 4)
@@ -60,6 +59,8 @@ public class StoreProduct {
     public void setProduct(Product product) { this.product = product; }
     public BigDecimal getSellPrice() { return sellPrice; }
     public void setSellPrice(BigDecimal sellPrice) { this.sellPrice = sellPrice; }
+    public BigDecimal getSellPriceOverride() { return sellPrice; }
+    public void setSellPriceOverride(BigDecimal sellPrice) { this.sellPrice = sellPrice; }
     public BigDecimal getQuantity() { return quantity; }
     public void setQuantity(BigDecimal quantity) { this.quantity = quantity; }
     public BigDecimal getReorderLevel() { return reorderLevel; }

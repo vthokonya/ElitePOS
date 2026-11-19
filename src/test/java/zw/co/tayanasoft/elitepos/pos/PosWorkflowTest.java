@@ -40,18 +40,19 @@ class PosWorkflowTest {
     @Transactional
     void checkoutSessionCanAuthenticateAndReadPosResources() {
         Currency currency = posService.createCurrency("PST", "POS Test Currency");
+        posService.setDefaultCurrency(currency.getId());
         Store store = posService.createStore("POS Access Test Store", currency.getId());
         CheckoutUser supervisor = posService.createCheckoutUser(
                 "pos-access-supervisor", "POS Access Supervisor", "0123", "SUPERVISOR");
         CheckoutUser cashier = posService.createCheckoutUser(
                 "pos-access-cashier", "POS Access Cashier", "4567", "CASHIER");
         Product product = posService.createProduct("POS Access Product", "pos-access-barcode", "POS-ACCESS",
-                BigDecimal.ZERO);
+                BigDecimal.ZERO, new BigDecimal("3"), new BigDecimal("5"));
         assertThat(dataManager.load(StoreProduct.class)
                 .query("select sp from StoreProduct sp where sp.product.id = :productId")
                 .parameter("productId", product.getId())
                 .list()).isEmpty();
-        posService.addProductToStore(store.getId(), product.getId(), new BigDecimal("5"),
+        posService.addProductToStore(store.getId(), product.getId(), null,
                 new BigDecimal("3"), BigDecimal.ZERO);
         StoreProduct item = dataManager.load(StoreProduct.class)
                 .query("select sp from StoreProduct sp where sp.store.id = :storeId and sp.product.id = :productId")
@@ -74,6 +75,8 @@ class PosWorkflowTest {
                     .contains(store.getId());
             assertThat(posService.scanProduct(store.getId(), "pos-access-barcode").name())
                     .isEqualTo("POS Access Product");
+            assertThat(posService.scanProduct(store.getId(), "pos-access-barcode").sellPrice())
+                    .isEqualByComparingTo("5");
             Sale sale = posService.recordSale(store.getId(), currency.getId(), new BigDecimal("5"),
                     "CASH", shift.getId(), cashier.getId(),
                     List.of(new PosService.CheckoutLine(item.getId(), BigDecimal.ONE)));
@@ -90,8 +93,9 @@ class PosWorkflowTest {
     void barcodeSaleReceivingInvoiceMatchingAndPayment() {
         Currency usd = posService.createCurrency("USD", "US Dollar");
         Currency zar = posService.createCurrency("ZAR", "South African Rand");
+        posService.setDefaultCurrency(usd.getId());
         Store store = posService.createStore("Test Store", usd.getId());
-        Supplier supplier = posService.createSupplier("Test Supplier", null, null, null);
+        Supplier supplier = posService.createSupplier("Test Supplier", null, null, null, usd.getId());
         CheckoutUser supervisor = posService.createCheckoutUser("supervisor-test", "Test Supervisor",
                 "0123", "SUPERVISOR");
         CheckoutUser cashier = posService.createCheckoutUser("cashier-test", "Test Cashier",
@@ -111,7 +115,7 @@ class PosWorkflowTest {
         PosShift shift = posService.openShift(supervisor.getId(), "0123", store.getId(),
                 cashier.getId(), new BigDecimal("20"));
         Product product = posService.createProduct("Coffee", "barcode-test-coffee", "COFFEE-01",
-                new BigDecimal("15"));
+                new BigDecimal("15"), new BigDecimal("5"), new BigDecimal("12"));
         posService.addProductToStore(store.getId(), product.getId(), new BigDecimal("10"),
                 new BigDecimal("5"), BigDecimal.ZERO);
         posService.addSupplierProduct(supplier.getId(), product.getId(), "SUP-COFFEE-01", new BigDecimal("5"));
@@ -122,7 +126,16 @@ class PosWorkflowTest {
                 .one();
 
         assertThat(posService.scanProduct(store.getId(), product.getBarcode()).name()).isEqualTo("Coffee");
+        assertThat(posService.scanProduct(store.getId(), product.getBarcode()).sellPrice())
+                .isEqualByComparingTo("10");
         posService.saveExchangeRate(usd.getId(), zar.getId(), new BigDecimal("2"), LocalDateTime.now().minusMinutes(1));
+        Store zarStore = posService.createStore("ZAR Store", zar.getId());
+        StoreProduct zarProduct = posService.addProductToStore(zarStore.getId(), product.getId(), null,
+                BigDecimal.ZERO, BigDecimal.ZERO);
+        assertThat(posService.getStoreSellPrice(zarProduct.getId())).isEqualByComparingTo("24.0000");
+        assertThat(posService.getSupplierCostInStoreCurrency(zarStore.getId(), supplier.getId(),
+                zarProduct.getId())).isEqualByComparingTo("10.0000");
+        assertThatIllegalArgumentException().isThrownBy(() -> posService.setDefaultCurrency(zar.getId()));
         Sale sale = posService.recordSale(store.getId(), zar.getId(), new BigDecimal("46"),
                 "CASH", shift.getId(), cashier.getId(),
                 List.of(new PosService.CheckoutLine(storeProduct.getId(), new BigDecimal("2"))));

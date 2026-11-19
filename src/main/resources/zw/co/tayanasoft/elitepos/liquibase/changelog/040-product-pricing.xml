@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                      http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd"
+        logicalFilePath="zw/co/tayanasoft/elitepos/liquibase/changelog/040-product-pricing.xml">
+
+    <changeSet id="1" author="ElitePOS">
+        <addColumn tableName="PRODUCT_">
+            <column name="STANDARD_COST" type="decimal(19,4)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+            <column name="STANDARD_SELL_PRICE" type="decimal(19,4)" defaultValueNumeric="0">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+        <dropNotNullConstraint tableName="STORE_PRODUCT_" columnName="SELL_PRICE" columnDataType="decimal(19,4)"/>
+        <addColumn tableName="SUPPLIER_">
+            <column name="CURRENCY_ID" type="${uuid.type}">
+                <constraints foreignKeyName="FK_SUPPLIER_CURRENCY" references="CURRENCY_(ID)"/>
+            </column>
+        </addColumn>
+        <createTable tableName="POS_SETTINGS_">
+            <column name="ID" type="${uuid.type}">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="VERSION" type="int">
+                <constraints nullable="false"/>
+            </column>
+            <column name="SETTING_KEY" type="varchar(32)" defaultValue="DEFAULT">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="DEFAULT_CURRENCY_ID" type="${uuid.type}">
+                <constraints foreignKeyName="FK_POS_SETTINGS_DEFAULT_CURRENCY" references="CURRENCY_(ID)"/>
+            </column>
+        </createTable>
+    </changeSet>
+</databaseChangeLog>

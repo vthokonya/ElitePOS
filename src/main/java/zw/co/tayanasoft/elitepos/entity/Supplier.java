@@ -6,6 +6,7 @@ import io.jmix.core.metamodel.annotation.JmixEntity;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 
 import java.util.UUID;
 
@@ -36,6 +37,11 @@ public class Supplier {
     @Column(name = "ADDRESS", length = 1000)
     private String address;
 
+    @NotNull
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "CURRENCY_ID")
+    private Currency currency;
+
     @Column(name = "ACTIVE", nullable = false)
     private Boolean active = true;
 
@@ -52,6 +58,8 @@ public class Supplier {
     public void setEmail(String email) { this.email = email; }
     public String getAddress() { return address; }
     public void setAddress(String address) { this.address = address; }
+    public Currency getCurrency() { return currency; }
+    public void setCurrency(Currency currency) { this.currency = currency; }
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
 }

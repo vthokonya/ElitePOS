@@ -114,10 +114,10 @@ public class PurchasingView extends StandardView {
         orderStore.setItemLabelGenerator(Store::getName);
         orderSupplier = new ComboBox<>("Supplier");
         orderSupplier.setItemLabelGenerator(Supplier::getName);
-        orderProduct = new ComboBox<>("Store product");
+        orderProduct = new ComboBox<>("Product at store");
         orderProduct.setItemLabelGenerator(item -> item.getProduct().getName() + " (" + item.getStore().getName() + ")");
         orderQuantity = numberField("Quantity", BigDecimal.ONE);
-        orderCost = numberField("Unit cost", BigDecimal.ZERO);
+        orderCost = numberField("Unit cost (store currency)", BigDecimal.ZERO);
         pendingOrderGrid = new Grid<>();
         pendingOrderGrid.addColumn(PendingOrderLine::product).setHeader("Product");
         pendingOrderGrid.addColumn(line -> line.quantity().stripTrailingZeros().toPlainString()).setHeader("Qty");
@@ -154,6 +154,7 @@ public class PurchasingView extends StandardView {
             refreshPendingOrder();
             updateOrderProducts();
         });
+        orderProduct.addValueChangeListener(event -> updateOrderCostFromSupplier());
         purchaseOrderGrid = new Grid<>();
         purchaseOrderGrid.addColumn(PurchaseOrder::getOrderNumber).setHeader("Order");
         purchaseOrderGrid.addColumn(order -> order.getStore().getName()).setHeader("Store");
@@ -350,9 +351,21 @@ public class PurchasingView extends StandardView {
         if (orderProduct != null && orderStore != null && orderStore.getValue() != null
                 && orderSupplier != null && orderSupplier.getValue() != null) {
             orderProduct.setItems(posService.getSupplierProducts(orderStore.getValue().getId(), orderSupplier.getValue().getId()));
+            if (orderProduct.getValue() != null) {
+                updateOrderCostFromSupplier();
+            }
         } else if (orderProduct != null) {
             orderProduct.clear();
         }
+    }
+
+    private void updateOrderCostFromSupplier() {
+        if (orderProduct == null || orderProduct.getValue() == null || orderStore.getValue() == null
+                || orderSupplier.getValue() == null) {
+            return;
+        }
+        run(() -> orderCost.setValue(posService.getSupplierCostInStoreCurrency(
+                orderStore.getValue().getId(), orderSupplier.getValue().getId(), orderProduct.getValue().getId())));
     }
 
     private void updateReceiptLines() {

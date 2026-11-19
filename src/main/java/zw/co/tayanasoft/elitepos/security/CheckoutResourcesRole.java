@@ -20,6 +20,8 @@ public interface CheckoutResourcesRole {
     @EntityAttributePolicy(entityClass = Product.class, attributes = "*", action = EntityAttributePolicyAction.VIEW)
     @EntityPolicy(entityClass = ExchangeRate.class, actions = EntityPolicyAction.READ)
     @EntityAttributePolicy(entityClass = ExchangeRate.class, attributes = "*", action = EntityAttributePolicyAction.VIEW)
+    @EntityPolicy(entityClass = PosSettings.class, actions = EntityPolicyAction.READ)
+    @EntityAttributePolicy(entityClass = PosSettings.class, attributes = "*", action = EntityAttributePolicyAction.VIEW)
     @EntityPolicy(entityClass = CheckoutUser.class, actions = EntityPolicyAction.READ)
     @EntityAttributePolicy(entityClass = CheckoutUser.class, attributes = "*", action = EntityAttributePolicyAction.VIEW)
     @EntityPolicy(entityClass = StoreProduct.class,

@@ -47,6 +47,39 @@ public class PosService {
     }
 
     @Transactional(readOnly = true)
+    public Currency getDefaultCurrency() {
+        return dataManager.load(PosSettings.class)
+                .query("select s from PosSettings s where s.settingKey = 'DEFAULT'")
+                .optional()
+                .map(PosSettings::getDefaultCurrency)
+                .orElse(null);
+    }
+
+    @Transactional
+    public Currency setDefaultCurrency(UUID currencyId) {
+        Currency currency = require(Currency.class, currencyId, "Default currency");
+        if (!Boolean.TRUE.equals(currency.getActive())) {
+            throw new IllegalArgumentException("The default currency must be active.");
+        }
+        PosSettings settings = dataManager.load(PosSettings.class)
+                .query("select s from PosSettings s where s.settingKey = 'DEFAULT'")
+                .optional()
+                .orElseGet(() -> {
+                    PosSettings created = dataManager.create(PosSettings.class);
+                    created.setSettingKey("DEFAULT");
+                    return created;
+                });
+        Currency existingCurrency = settings.getDefaultCurrency();
+        if (existingCurrency != null && !Objects.equals(existingCurrency.getId(), currencyId)
+                && dataManager.loadValue("select count(p) from Product p", Long.class).one() > 0) {
+            throw new IllegalArgumentException("The default currency cannot be changed after products have been created.");
+        }
+        settings.setDefaultCurrency(currency);
+        dataManager.save(settings);
+        return currency;
+    }
+
+    @Transactional(readOnly = true)
     public List<Supplier> getActiveSuppliers() {
         return dataManager.load(Supplier.class)
                 .query("select s from Supplier s where s.active = true order by s.name")
@@ -81,7 +114,27 @@ public class PosService {
                 .optional()
                 .orElseThrow(() -> new IllegalArgumentException("No active product with barcode " + barcode + " is stocked at this store."));
         return new ProductLookup(item.getId(), item.getProduct().getBarcode(), item.getProduct().getName(),
-                item.getSellPrice(), item.getProduct().getTaxRate(), item.getQuantity());
+                getStoreSellPrice(item), item.getProduct().getTaxRate(), item.getQuantity());
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal getStoreSellPrice(UUID storeProductId) {
+        return getStoreSellPrice(require(StoreProduct.class, storeProductId, "Store product"));
+    }
+
+    @Transactional(readOnly = true)
+    public BigDecimal getSupplierCostInStoreCurrency(UUID storeId, UUID supplierId, UUID storeProductId) {
+        Store store = require(Store.class, storeId, "Store");
+        Supplier supplier = require(Supplier.class, supplierId, "Supplier");
+        StoreProduct item = require(StoreProduct.class, storeProductId, "Store product");
+        if (!Objects.equals(item.getStore().getId(), storeId)) {
+            throw new IllegalArgumentException("The product is not listed at the selected store.");
+        }
+        SupplierProduct supplierProduct = findSupplierProduct(supplierId, item.getProduct().getId());
+        if (supplier.getCurrency() == null) {
+            throw new IllegalArgumentException("Set the supplier's currency before ordering its products.");
+        }
+        return convertAmount(supplierProduct.getLastUnitCost(), supplier.getCurrency(), store.getTradingCurrency());
     }
 
     @Transactional(readOnly = true)
@@ -145,7 +198,8 @@ public class PosService {
                 throw new IllegalArgumentException("Insufficient stock for " + item.getProduct().getName()
                         + ": available " + item.getQuantity() + ", requested " + quantity + ".");
             }
-            BigDecimal lineSubtotal = money(item.getSellPrice().multiply(quantity));
+            BigDecimal unitPrice = getStoreSellPrice(item);
+            BigDecimal lineSubtotal = money(unitPrice.multiply(quantity));
             BigDecimal taxRate = item.getProduct().getTaxRate();
             if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
                 throw new IllegalArgumentException("Tax rate for " + item.getProduct().getName() + " must be between 0 and 100 percent.");
@@ -154,7 +208,7 @@ public class PosService {
             SaleLine saleLine = dataManager.create(SaleLine.class);
             saleLine.setStoreProduct(item);
             saleLine.setQuantity(quantity);
-            saleLine.setUnitPrice(item.getSellPrice());
+            saleLine.setUnitPrice(unitPrice);
             saleLine.setTaxRate(taxRate);
             saleLine.setLineSubtotal(lineSubtotal);
             saleLine.setTaxAmount(taxAmount);
@@ -547,15 +601,17 @@ public class PosService {
     }
 
     @Transactional
-    public Supplier createSupplier(String name, String phone, String email, String address) {
+    public Supplier createSupplier(String name, String phone, String email, String address, UUID currencyId) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Supplier name is required.");
         }
+        Currency currency = requireActiveCurrency(currencyId, "Supplier currency");
         Supplier supplier = dataManager.create(Supplier.class);
         supplier.setName(name.trim());
         supplier.setPhone(phone);
         supplier.setEmail(email);
         supplier.setAddress(address);
+        supplier.setCurrency(currency);
         supplier.setActive(true);
         return dataManager.save(supplier);
     }
@@ -566,6 +622,9 @@ public class PosService {
         requireNonNegative(lastUnitCost, "Supplier unit cost");
         Supplier supplier = require(Supplier.class, supplierId, "Supplier");
         Product product = require(Product.class, productId, "Product");
+        if (supplier.getCurrency() == null) {
+            throw new IllegalArgumentException("Set the supplier's currency before linking products.");
+        }
         if (!Boolean.TRUE.equals(supplier.getActive()) || !Boolean.TRUE.equals(product.getActive())) {
             throw new IllegalArgumentException("The selected supplier and product must be active.");
         }
@@ -579,18 +638,24 @@ public class PosService {
     }
 
     @Transactional
-    public Product createProduct(String name, String barcode, String sku, BigDecimal taxRate) {
+    public Product createProduct(String name, String barcode, String sku, BigDecimal taxRate,
+                                 BigDecimal standardCost, BigDecimal standardSellPrice) {
         if (name == null || name.isBlank() || barcode == null || barcode.isBlank()) {
             throw new IllegalArgumentException("Product name and barcode are required.");
         }
         if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException("Tax rate must be between 0 and 100 percent.");
         }
+        requireDefaultCurrency();
+        requireNonNegative(standardCost, "Standard cost");
+        requireNonNegative(standardSellPrice, "Standard selling price");
         Product product = dataManager.create(Product.class);
         product.setName(name.trim());
         product.setBarcode(barcode.trim());
         product.setSku(sku == null || sku.isBlank() ? null : sku.trim());
         product.setTaxRate(taxRate);
+        product.setStandardCost(money(standardCost));
+        product.setStandardSellPrice(money(standardSellPrice));
         product.setActive(true);
         return dataManager.save(product);
     }
@@ -598,7 +663,7 @@ public class PosService {
     @Transactional
     public StoreProduct addProductToStore(UUID storeId, UUID productId, BigDecimal sellPrice,
                                           BigDecimal initialQuantity, BigDecimal reorderLevel) {
-        requireNonNegative(sellPrice, "Selling price");
+        requireNonNegativeIfPresent(sellPrice, "Store selling price override");
         requireNonNegative(initialQuantity, "Initial quantity");
         requireNonNegative(reorderLevel, "Reorder level");
         Store store = require(Store.class, storeId, "Store");
@@ -609,7 +674,7 @@ public class PosService {
         StoreProduct item = dataManager.create(StoreProduct.class);
         item.setStore(store);
         item.setProduct(product);
-        item.setSellPrice(money(sellPrice));
+        item.setSellPrice(sellPrice == null ? null : money(sellPrice));
         item.setQuantity(initialQuantity);
         item.setReorderLevel(reorderLevel);
         item.setActive(true);
@@ -621,41 +686,61 @@ public class PosService {
     }
 
     @Transactional
-    public Product updateProduct(UUID productId, String name, String barcode, String sku, BigDecimal taxRate) {
+    public Product updateProduct(UUID productId, String name, String barcode, String sku, BigDecimal taxRate,
+                                 BigDecimal standardCost, BigDecimal standardSellPrice) {
         if (name == null || name.isBlank() || barcode == null || barcode.isBlank()) {
             throw new IllegalArgumentException("Product name and barcode are required.");
         }
         if (taxRate == null || taxRate.signum() < 0 || taxRate.compareTo(new BigDecimal("100")) > 0) {
             throw new IllegalArgumentException("Tax rate must be between 0 and 100 percent.");
         }
+        requireDefaultCurrency();
+        requireNonNegative(standardCost, "Standard cost");
+        requireNonNegative(standardSellPrice, "Standard selling price");
         Product product = require(Product.class, productId, "Product");
         product.setName(name.trim());
         product.setBarcode(barcode.trim());
         product.setSku(sku == null || sku.isBlank() ? null : sku.trim());
         product.setTaxRate(taxRate);
+        product.setStandardCost(money(standardCost));
+        product.setStandardSellPrice(money(standardSellPrice));
         return dataManager.save(product);
     }
 
     @Transactional
-    public Supplier updateSupplier(UUID supplierId, String name, String phone, String email, String address) {
+    public Supplier updateSupplier(UUID supplierId, String name, String phone, String email, String address,
+                                   UUID currencyId) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException("Supplier name is required.");
         }
         Supplier supplier = require(Supplier.class, supplierId, "Supplier");
+        Currency currency = requireActiveCurrency(currencyId, "Supplier currency");
+        Currency previousCurrency = supplier.getCurrency();
+        if (previousCurrency != null && !Objects.equals(previousCurrency.getId(), currency.getId())) {
+            List<SupplierProduct> links = dataManager.load(SupplierProduct.class)
+                    .query("select sp from SupplierProduct sp where sp.supplier.id = :supplierId")
+                    .parameter("supplierId", supplierId)
+                    .list();
+            for (SupplierProduct link : links) {
+                link.setLastUnitCost(convertAmount(link.getLastUnitCost(), previousCurrency, currency));
+                dataManager.save(link);
+            }
+        }
         supplier.setName(name.trim());
         supplier.setPhone(phone);
         supplier.setEmail(email);
         supplier.setAddress(address);
+        supplier.setCurrency(currency);
         return dataManager.save(supplier);
     }
 
     @Transactional
     public StoreProduct updateStoreProduct(UUID storeProductId, BigDecimal sellPrice, BigDecimal reorderLevel,
                                           BigDecimal quantityChange, String adjustmentReason) {
-        requireNonNegative(sellPrice, "Selling price");
+        requireNonNegativeIfPresent(sellPrice, "Store selling price override");
         requireNonNegative(reorderLevel, "Reorder level");
         StoreProduct item = require(StoreProduct.class, storeProductId, "Store product");
-        item.setSellPrice(money(sellPrice));
+        item.setSellPrice(sellPrice == null ? null : money(sellPrice));
         item.setReorderLevel(reorderLevel);
         if (quantityChange != null && quantityChange.signum() != 0) {
             if (adjustmentReason == null || adjustmentReason.isBlank()) {
@@ -683,6 +768,9 @@ public class PosService {
         Supplier supplier = require(Supplier.class, supplierId, "Supplier");
         if (!Boolean.TRUE.equals(store.getActive()) || !Boolean.TRUE.equals(supplier.getActive())) {
             throw new IllegalArgumentException("The selected store and supplier must be active.");
+        }
+        if (supplier.getCurrency() == null) {
+            throw new IllegalArgumentException("Set the supplier's currency before creating purchase orders.");
         }
         PurchaseOrder order = dataManager.create(PurchaseOrder.class);
         order.setOrderNumber("PO-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT));
@@ -716,7 +804,8 @@ public class PosService {
             line.setOrderedQuantity(input.quantity());
             line.setReceivedQuantity(BigDecimal.ZERO);
             line.setUnitCost(input.unitCost());
-            supplierProduct.setLastUnitCost(money(input.unitCost()));
+            supplierProduct.setLastUnitCost(convertAmount(input.unitCost(),
+                    store.getTradingCurrency(), supplier.getCurrency()));
             dataManager.save(supplierProduct);
             orderLines.add(line);
             total = total.add(input.quantity().multiply(input.unitCost()));
@@ -902,6 +991,51 @@ public class PosService {
         return quantities.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private BigDecimal getStoreSellPrice(StoreProduct item) {
+        if (item.getSellPriceOverride() != null) {
+            return item.getSellPriceOverride();
+        }
+        Currency defaultCurrency = requireDefaultCurrency();
+        return convertAmount(item.getProduct().getStandardSellPrice(),
+                defaultCurrency, item.getStore().getTradingCurrency());
+    }
+
+    private Currency requireDefaultCurrency() {
+        Currency currency = getDefaultCurrency();
+        if (currency == null || !Boolean.TRUE.equals(currency.getActive())) {
+            throw new IllegalArgumentException("Select an active default currency in Stores & Business Setup.");
+        }
+        return currency;
+    }
+
+    private Currency requireActiveCurrency(UUID currencyId, String label) {
+        Currency currency = require(Currency.class, currencyId, label);
+        if (!Boolean.TRUE.equals(currency.getActive())) {
+            throw new IllegalArgumentException(label + " must be active.");
+        }
+        return currency;
+    }
+
+    private BigDecimal convertAmount(BigDecimal amount, Currency from, Currency to) {
+        if (Objects.equals(from.getId(), to.getId())) {
+            return money(amount);
+        }
+        BigDecimal rate = findRate(from, to, LocalDateTime.now())
+                .orElseThrow(() -> new IllegalArgumentException("No current exchange rate is configured from "
+                        + from.getCode() + " to " + to.getCode() + "."));
+        return money(amount.multiply(rate));
+    }
+
+    private SupplierProduct findSupplierProduct(UUID supplierId, UUID productId) {
+        return dataManager.load(SupplierProduct.class)
+                .query("select sp from SupplierProduct sp where sp.supplier.id = :supplierId "
+                        + "and sp.product.id = :productId and sp.active = true")
+                .parameter("supplierId", supplierId)
+                .parameter("productId", productId)
+                .optional()
+                .orElseThrow(() -> new IllegalArgumentException("The selected product is not linked to this supplier."));
+    }
+
     private Optional<BigDecimal> findRate(Currency from, Currency to, LocalDateTime asOf) {
         List<ExchangeRate> direct = dataManager.load(ExchangeRate.class)
                 .query("select r from ExchangeRate r where r.fromCurrency.id = :fromId and r.toCurrency.id = :toId and r.effectiveAt <= :asOf order by r.effectiveAt desc")
@@ -953,6 +1087,12 @@ public class PosService {
 
     private static void requireNonNegative(BigDecimal value, String label) {
         if (value == null || value.signum() < 0) {
+            throw new IllegalArgumentException(label + " cannot be negative.");
+        }
+    }
+
+    private static void requireNonNegativeIfPresent(BigDecimal value, String label) {
+        if (value != null && value.signum() < 0) {
             throw new IllegalArgumentException(label + " cannot be negative.");
         }
     }
